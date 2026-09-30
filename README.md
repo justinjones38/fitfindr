@@ -59,24 +59,32 @@
 
 ### `search_listings`
 
-- **What it does:**
+- **What it does:** - Search the listings data for items that match the description, size and max price
 - **Inputs:** <!-- name and type each: `max_price` (float), not "a price" -->
-- **Returns:**
-- **When it has nothing:**
+  - description (str)
+  - size (str)
+  - max_prize (float)
+- **Returns:** - it returns a list of dictionaries, with the best match first
+- **When it has nothing:** - it returns an empty list
 
 ### `suggest_outfit`
 
-- **What it does:**
-- **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** - Given an item and wadrobe, it suggest couple of outfits
+- **Inputs:** 
+  - new_item (dict)
+  - wardrobe (dict)
+- **Returns:** - returns a non-empty string with outfit suggestions
+- **When it has nothing:** 
+returns general styling advice
 
 ### `create_fit_card`
 
-- **What it does:**
+- **What it does:** - write a short caption that someone what post about their find
 - **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+  - outfit suggestion (string)
+  - new_item (listing dict) 
+- **Returns:** - 2 to 4 sentence caption
+- **When it has nothing:** - return a descriptive message 
 
 ---
 
@@ -94,12 +102,19 @@
      function have to be real. -->
 
 **Branch rule:**
+If search_listings returns an empty list, put a message in session["error"] that says what was searched and what to loosen (raise the price limit, drop the size, or use broader keywords), then stop, without calling suggest_outfit or create_fit_card. Otherwise, take the first result as selected_item and go on to suggest_outfit, then create_fit_card.
+
 
 **Where it lives:** `agent.py::run_agent`
 
-**How the query is parsed:** <!-- regex, string splitting, or asking the model — say which -->
+**How the query is parsed:**
+Regex, in agent.py::parse_query. One pattern finds the price ("under $30", "below 60", "$25") and becomes max_price. Another finds "size X" ("size M", "size US 9", and "size medium" → M) and becomes size. Filler words like "looking for a" are removed, and what's left is the description. Anything not found is None, so the search skips that filter.
+
 
 **What moves through the session:** <!-- which fields, in what order -->
+query → parsed (description, size, max_price) → search_results → branch: empty sets error and stops, otherwise it continues → selected_item (the first result) → outfit_suggestion → fit_card.
+
+
 
 ---
 
