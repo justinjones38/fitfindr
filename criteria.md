@@ -54,10 +54,12 @@ Given a query that matches no listings, the agent stops before calling
      compares session["selected_item"] against what actually reached
      suggest_outfit is the shape you're after. -->
 
+The fit card names the same item as session["selected_item"]: its price and platform match selected_item["price"] and selected_item["platform"]. Target: 5 of 5.
+
 
 
 **Why this target:**
-
+Why 5 of 5: the loop passes selected_item straight from the session to both tools, so a mismatch would mean a session bug, not model randomness. It's checkable because the fit card is the last step. If the right item made it into the card, it went through the whole chain.
 
 
 ---
@@ -74,11 +76,11 @@ Given a query that matches no listings, the agent stops before calling
      mentions the price? Two different items producing the same opening
      sentence? A card longer than a caption anyone would post? Any of those can
      be turned into a number. -->
-
+The fit card mentions the item's price and platform, and is 2 to 4 sentences long. Target: 4 of 5.
 
 
 **Why this target:**
-
+Why 4 of 5: the model runs at temperature 0.9 and sometimes drops a detail or runs long. If you choose the variety version, mention that run_eval.py turns off the cache. Otherwise repeat runs would just return the stored answer.
 
 
 ---
@@ -92,10 +94,10 @@ Given a query that matches no listings, the agent stops before calling
      search respects a price ceiling — anything, as long as it names a number
      or an observable outcome. -->
 
-
+Price ceiling: every item in search_results has price <= max_price. Target 5 of 5, 
 
 **Why this target:**
-
+Because it's a plain filter, the price should be less than the max price
 
 
 ---
