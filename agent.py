@@ -108,6 +108,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
         than a stack trace. The import is already at the top of this file.
     """
     session = new_session(query, wardrobe)
+    trace.start_trace()
 
     # Each pass round the loop runs one step, and the step decides what runs
     # next by looking at what it just produced.
@@ -120,6 +121,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
 
         if next_step == "parse":
             session["parsed"] = parse_query(query)
+            trace.step("parse_query", inputs=query, returned=str(session["parsed"]))
             next_step = "search"
 
         elif next_step == "search":
@@ -134,24 +136,40 @@ def run_agent(query: str, wardrobe: dict) -> dict:
             # than handing suggest_outfit an item that doesn't exist.
             if not session["search_results"]:
                 session["error"] = _no_results_message(parsed)
+                trace.step("search_listings", inputs=str(parsed),
+                           returned=session["search_results"],
+                           note="branch: empty, stopping before suggest_outfit")
                 next_step = "done"
             else:
+                trace.step("search_listings", inputs=str(parsed),
+                           returned=session["search_results"],
+                           note="branch: results found, continuing")
                 next_step = "select"
 
         elif next_step == "select":
             session["selected_item"] = session["search_results"][0]
+            trace.step("select_item", inputs="first of search_results",
+                       returned=session["selected_item"])
             next_step = "suggest"
 
         elif next_step == "suggest":
             session["outfit_suggestion"] = suggest_outfit(
                 session["selected_item"], session["wardrobe"]
             )
+            trace.step("suggest_outfit",
+                       inputs=str({"new_item": session["selected_item"]["title"],
+                                   "wardrobe_items": len(session["wardrobe"].get("items") or [])}),
+                       returned=session["outfit_suggestion"])
             next_step = "fit_card"
 
         elif next_step == "fit_card":
             session["fit_card"] = create_fit_card(
                 session["outfit_suggestion"], session["selected_item"]
             )
+            trace.step("create_fit_card",
+                       inputs=str({"outfit": session["outfit_suggestion"][:40] + "…",
+                                   "new_item": session["selected_item"]["title"]}),
+                       returned=session["fit_card"])
             next_step = "done"
 
     return session
