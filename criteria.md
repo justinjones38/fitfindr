@@ -28,6 +28,15 @@ tool calls and returns a fit card — in at least 4 of 5 tries.
 <!-- Why 4 of 5 and not 5 of 5? Something about your search, probably —
      "my search is a plain keyword match and some phrasings will miss" is a
      real answer. -->
+Each try runs the same query, and the part before the model is deterministic:
+`parse_query` is regex and `search_listings` is a keyword filter with no model
+call, so every try finds the same item. The variation is in the two live model
+calls, `suggest_outfit` and `create_fit_card`, made through `generate()` with
+caching off. A rate-limit error that outlasts `MAX_RETRIES`, or the model
+replying with nothing, ends a try without a fit card. That is a real risk with
+the free tier's 15 requests a minute, so 5 of 5 would be expecting the service
+to never fail. Lower than 4 of 5 would mean my own code is failing, since
+search can't change between tries.
 
 ---
 
@@ -39,6 +48,14 @@ Given a query that matches no listings, the agent stops before calling
 **Why this target:**
 <!-- Why is 5 of 5 reasonable here when criterion 1 isn't? What's different
      about this path? -->
+Nothing on this path calls the model. `parse_query` (regex) and
+`search_listings` (a filter over `data/listings.json`) give the same result
+every time for the same query, and the branch is a single
+`if not session["search_results"]` check in `agent.py::run_agent` that sets
+`session["error"]` and ends the loop before `suggest_outfit` runs. With no
+randomness and no service call before the stop, there is no reason for it to
+behave differently on any try, so any miss would be a bug in my branch, not
+bad luck.
 
 ---
 
@@ -54,10 +71,12 @@ Given a query that matches no listings, the agent stops before calling
      compares session["selected_item"] against what actually reached
      suggest_outfit is the shape you're after. -->
 
+The fit card names the same item as session["selected_item"]: its price and platform match selected_item["price"] and selected_item["platform"]. Target: 5 of 5.
+
 
 
 **Why this target:**
-
+Why 5 of 5: the loop passes selected_item straight from the session to both tools, so a mismatch would mean a session bug, not model randomness. It's checkable because the fit card is the last step. If the right item made it into the card, it went through the whole chain.
 
 
 ---
@@ -74,11 +93,11 @@ Given a query that matches no listings, the agent stops before calling
      mentions the price? Two different items producing the same opening
      sentence? A card longer than a caption anyone would post? Any of those can
      be turned into a number. -->
-
+The fit card mentions the item's price and platform, and is 2 to 4 sentences long. Target: 4 of 5.
 
 
 **Why this target:**
-
+Why 4 of 5: the model runs at temperature 0.9 and sometimes drops a detail or runs long. If you choose the variety version, mention that run_eval.py turns off the cache. Otherwise repeat runs would just return the stored answer.
 
 
 ---
@@ -92,10 +111,10 @@ Given a query that matches no listings, the agent stops before calling
      search respects a price ceiling — anything, as long as it names a number
      or an observable outcome. -->
 
-
+Price ceiling: every item in search_results has price <= max_price. Target 5 of 5, 
 
 **Why this target:**
-
+Because it's a plain filter, the price should be less than the max price
 
 
 ---
