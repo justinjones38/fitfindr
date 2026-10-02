@@ -135,7 +135,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
             # THE BRANCH: nothing matched, so stop here with advice rather
             # than handing suggest_outfit an item that doesn't exist.
             if not session["search_results"]:
-                session["error"] = _no_results_message(parsed)
+                session["error"] = _no_results_message(parsed, query)
                 trace.step("search_listings", inputs=str(parsed),
                            returned=session["search_results"],
                            note="branch: empty, stopping before suggest_outfit")
@@ -237,8 +237,20 @@ def parse_query(query: str) -> dict:
     return {"description": description, "size": size, "max_price": max_price}
 
 
-def _no_results_message(parsed: dict) -> str:
+def _no_results_message(parsed: dict, query: str) -> str:
     """Tell the user what they searched for and which knob to loosen."""
+    # Every word of the query was a price, a size, or filler, so the search
+    # had no item to look for. Loosening anything wouldn't help — the user
+    # needs to say what kind of item they want.
+    if not parsed["description"]:
+        return (
+            f"I couldn't tell what kind of item you want from '{query.strip()}'. "
+            "Name the item, like 'denim jacket', 'graphic tee', 'jeans', or "
+            "'sneakers' — this shop carries tops, bottoms, outerwear, shoes, "
+            "and accessories. You can add a size and a price too, e.g. "
+            "'graphic tee size M under $30'."
+        )
+
     searched = f"'{parsed['description']}'"
     if parsed["size"]:
         searched += f" in size {parsed['size']}"
