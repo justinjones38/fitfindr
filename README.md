@@ -64,7 +64,7 @@ A user types what clothes that they are looking for. Then FitFindr searches for 
   - description (str)
   - size (str)
   - max_prize (float)
-- **Returns:** - it returns a list of dictionaries, with the best match first
+- **Returns:** - it returns a list of dictionaries, with the best match first. At most it returns 10, with the limit set by SEARCH_RESULT_LIMIT in config.py
 - **When it has nothing:** - it returns an empty list
 
 ### `suggest_outfit`
