@@ -40,7 +40,7 @@
 ## What This Does
 
 <!-- Three or four sentences: what a user asks for, and what they get back. -->
-
+A user types what clothes that they are looking for. Then FitFindr searches for a set of 2nd hand listing for the best match at the price and size of the user. It then suggests outfits that already fits with the user's wardrobe or gives general styling advice if the wardrobe is empty. If nothing matches, then it stops and recommends changes to the user, such as increasing the price limit or dropping the size
 
 
 ---
