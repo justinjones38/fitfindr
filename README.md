@@ -230,11 +230,11 @@ Scored these vintage Levi's 501 jeans on depop for just $38 and they fit like an
 
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. A matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET |
+| 2. An impossible query stops before the second tool | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET | 
+| 3. The fit card names the same item as session["selected_item"]: its price and platform match selected_item["price"] and selected_item["platform"]. | 5 of 5  | PASS | PASS | PASS | PASS | PASS | MET |
+| 4. The fit card mentions the item's price and platform, and is 2 to 4 sentences long. | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET |
+| 5. Price ceiling: every item in search_results has price <= max_price. | 5 of 5 | PASS | PASS | PASS | PASS | PASS  | MET |
 
 **Real output from one try**, pasted as text, naming the file and function
 that produced it:

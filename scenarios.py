@@ -35,6 +35,39 @@ SCENARIOS = [
         "wardrobe": "empty",
         "criterion": None,
     },
+    {
+        # Criterion 3: state. Ten matches, so if the wrong item reached
+        # suggest_outfit it would show. Compare selected_item's price and
+        # platform against the fit card.
+        "name": "selected item reaches the fit card",
+        "query": "vintage graphic tee under $30",
+        "wardrobe": "example",
+        "criterion": 3,
+    },
+    {
+        # Criterion 4: the fit card. Same item every try, so any difference
+        # between cards comes from the model, not the search.
+        "name": "fit card has price, platform, 2-4 sentences",
+        "query": "denim jacket under $50",
+        "wardrobe": "example",
+        "criterion": 4,
+    },
+    {
+        # Criterion 5: price ceiling. Seven matches, two of them ($42, $45)
+        # close to the $50 limit.
+        "name": "search respects price ceiling",
+        "query": "denim jacket under $50",
+        "wardrobe": "example",
+        "criterion": 5,
+    },
+    {
+        # Criterion 5, boundary: the ceiling equals a real price ($45).
+        # max_price is inclusive, so the $45 jacket should be in the results.
+        "name": "price ceiling boundary",
+        "query": "denim jacket under $45",
+        "wardrobe": "example",
+        "criterion": 5,
+    },
     # TODO: add what your criteria 3, 4 and 5 need.
     #
     # Set "criterion" to the number in criteria.md that the scenario tests.
