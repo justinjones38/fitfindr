@@ -292,13 +292,56 @@ that produced it:
 **Happy path**
 
 ```
+$ python app.py ask "vintage under 60" --trace
+[1] parse_query
+      in:  vintage under 60
+      out: {'description': 'vintage', 'size': None, 'max_price': 60.0}
+[2] search_listings (via MCP)
+      in:  {'description': 'vintage', 'size': None, 'max_price': 60.0}
+      out: 10 items: Vintage Polo Shirt — Forest Green, Vintage Band Tee — Faded Grey, Oversized Crewneck Sweatshirt — Vintage Navy … +7 more
+      →    branch: results found, continuing
+[3] select_item
+      in:  first of search_results
+      out: Vintage Polo Shirt — Forest Green ($18.0, thredUp)
+[4] suggest_outfit
+      in:  {'new_item': 'Vintage Polo Shirt — Forest Green', 'wardrobe_items': 10}
+      out: Hey friend! Oh, you *totally* need to grab that forest green Ralph Lauren polo—it is such a timeless staple an…
+[5] create_fit_card
+      in:  {'outfit': 'Hey friend! Oh, you *totally* need to gr…', 'new_item': 'Vintage Polo Shirt — Forest Green'}
+      out: Scored this vintage Ralph Lauren forest green polo on thredUp for just $18, and I am obsessed with the color. …
 
+  Found:    Vintage Polo Shirt — Forest Green — $18.0 on thredUp
+
+  Outfit:   Hey friend! Oh, you *totally* need to grab that forest green Ralph Lauren polo—it is such a timeless staple and the color is gorgeous. 
+
+Here are two fun ways to style it using pieces you already own:
+
+**Outfit 1: Casual Streetwear Vibe**
+Pair the vintage polo shirt with your baggy straight-leg jeans, and cinch them together using the brown leather belt. Slip on your chunky white sneakers, and toss the black crossbody bag over your shoulder for an easy, cool-girl everyday look.
+
+**Outfit 2: Earthy & Relaxed**
+Tuck the vintage polo shirt into your wide-leg khaki trousers, accented by the brown leather belt. Finish this classic, preppy outfit with your black combat boots to add a little bit of edge!
+
+  Fit card: Scored this vintage Ralph Lauren forest green polo on thredUp for just $18, and I am obsessed with the color. I tucked it into wide-leg khaki trousers with a leather belt and added black combat boots for a preppy look with a little bit of edge. Such a timeless staple that I'm going to wear on repeat this season!
+
+2 model calls this session, 701 prompt + 236 output tokens
 ```
 
 **Empty search**
 
 ```
+$ python app.py ask "..." --trace
+[1] parse_query
+      in:  ...
+      out: {'description': '', 'size': None, 'max_price': None}
+[2] search_listings (via MCP)
+      in:  {'description': '', 'size': None, 'max_price': None}
+      out: [] (empty)
+      →    branch: empty, stopping before suggest_outfit
 
+  I couldn't tell what kind of item you want from '...'. Name the item, like 'denim jacket', 'graphic tee', 'jeans', or 'sneakers' — this shop carries tops, bottoms, outerwear, shoes, and accessories. You can add a size and a price too, e.g. 'graphic tee size M under $30'.
+
+0 model calls this session
 ```
 
 **On the MCP move:** <!-- what changed in your code, and whether anything
@@ -352,27 +395,27 @@ full. -->
 
      SUBMISSION CHECKLIST — unit 3
 
-       [ ] criteria.md has five numbered criteria, each with a target
-       [ ] Each criterion has a reason underneath it
-       [ ] All five unit 3 sections above have real content
-       [ ] Tool Inventory: all three tools, inputs WITH TYPES, a specific
+       [X] criteria.md has five numbered criteria, each with a target
+       [X] Each criterion has a reason underneath it
+       [X] All five unit 3 sections above have real content
+       [X] Tool Inventory: all three tools, inputs WITH TYPES, a specific
            return value, and the empty case
-       [ ] Planning Loop names the branch rule and agent.py::run_agent
-       [ ] Sample Run: one full query plus the three per-tool tests, as text
-       [ ] At least four new commits
-       [ ] Repository URL submitted — WRITE IT DOWN, you submit the same one
+       [X] Planning Loop names the branch rule and agent.py::run_agent
+       [X] Sample Run: one full query plus the three per-tool tests, as text
+       [X] At least four new commits
+       [X] Repository URL submitted — WRITE IT DOWN, you submit the same one
            next unit
 
      SUBMISSION CHECKLIST — unit 4
 
-       [ ] mcp_server.py exists with one tool registered
+       [X] mcp_server.py exists with one tool registered
            (or a written record of exactly where the rewire broke)
        [ ] Run Log — Before, five criteria, five tries each
        [ ] Real output pasted underneath, naming file and function
        [ ] A verdict on every criterion
        [ ] A diagnosis for every miss, naming a place AND a mechanism
-       [ ] Loop Trace, with the MCP call visible in it
-       [ ] All three failure modes triggered and handled
+       [X] Loop Trace, with the MCP call visible in it
+       [X] All three failure modes triggered and handled
        [ ] One improvement, with Run Log — After in the same format
        [ ] What's Still Broken
        [ ] At least four new commits
