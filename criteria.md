@@ -59,7 +59,8 @@ bad luck.
 
 ---
 
-## 3. Something about state
+## 3. The fit card names the same item as session["selected_item"]: its price and platform match selected_item["price"] and selected_item["platform"]. Target: 5 of 5.
+
 
 <!-- YOU WRITE THIS ONE.
 
@@ -71,8 +72,6 @@ bad luck.
      compares session["selected_item"] against what actually reached
      suggest_outfit is the shape you're after. -->
 
-The fit card names the same item as session["selected_item"]: its price and platform match selected_item["price"] and selected_item["platform"]. Target: 5 of 5.
-
 
 
 **Why this target:**
@@ -81,7 +80,8 @@ Why 5 of 5: the loop passes selected_item straight from the session to both tool
 
 ---
 
-## 4. Something about the fit card
+## 4. The fit card mentions the item's price and platform, and is 2 to 4 sentences long. Target: 4 of 5.
+
 
 <!-- YOU WRITE THIS ONE.
 
@@ -93,7 +93,6 @@ Why 5 of 5: the loop passes selected_item straight from the session to both tool
      mentions the price? Two different items producing the same opening
      sentence? A card longer than a caption anyone would post? Any of those can
      be turned into a number. -->
-The fit card mentions the item's price and platform, and is 2 to 4 sentences long. Target: 4 of 5.
 
 
 **Why this target:**
@@ -102,7 +101,8 @@ Why 4 of 5: the model runs at temperature 0.9 and sometimes drops a detail or ru
 
 ---
 
-## 5. Your choice
+## 5. Price ceiling: every item in search_results has price <= max_price. Target 5 of 5, 
+
 
 <!-- YOU WRITE THIS ONE TOO.
 
@@ -110,8 +110,6 @@ Why 4 of 5: the model runs at temperature 0.9 and sometimes drops a detail or ru
      wardrobe path, what happens when the model can't be reached, whether the
      search respects a price ceiling — anything, as long as it names a number
      or an observable outcome. -->
-
-Price ceiling: every item in search_results has price <= max_price. Target 5 of 5, 
 
 **Why this target:**
 Because it's a plain filter, the price should be less than the max price

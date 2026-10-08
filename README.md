@@ -210,6 +210,11 @@ Scored these vintage Levi's 501 jeans on depop for just $38 and they fit like an
 - *What came back:* - It gave me the correct commands to set the project with Git Bash
 - *What I changed:* - I just used the correct commands with Git Bash to set up the projects
 
+**Moment 3**
+- *What I asked for:* - to give advice on changes to prevent 503 error in Criterion 1 
+- *What came back:* - it helped refactor to introduce a loop so that 503 error are treated as temporary errors
+- *What I changed:* - 503 error no longer crashes the code. 
+
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
      Don't fill these in during unit 3.
@@ -230,18 +235,69 @@ Scored these vintage Levi's 501 jeans on depop for just $38 and they fit like an
 
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. A matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET |
+| 2. An impossible query stops before the second tool | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET | 
+| 3. The fit card names the same item as session["selected_item"]: its price and platform match selected_item["price"] and selected_item["platform"]. | 5 of 5  | PASS | PASS | PASS | PASS | PASS | MET |
+| 4. The fit card mentions the item's price and platform, and is 2 to 4 sentences long. | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET |
+| 5. Price ceiling: every item in search_results has price <= max_price. | 5 of 5 | PASS | PASS | PASS | PASS | PASS  | MET |
 
 **Real output from one try**, pasted as text, naming the file and function
 that produced it:
 
-```
+**File:** `results/run_2026-10-07_1452_before.md` (scenario "matching query completes", try 3)  
+**Function:** `agent.py::run_agent`, run by `run_eval.py::main`. The fit card comes from `tools.py::create_fit_card`.
+
+````
+**Try 3** 
+
+- stopped early: no
+- selected_item: Vintage Band Tee — Faded Grey ($19.0, depop)
+- search_results: 10
+- search_result prices: [19.0, 24.0, 18.0, 26.0, 20.0, 18.0, 25.0, 12.0, 14.0, 15.0]
+
+Outfit suggestion:
 
 ```
+Hey friend! That faded vintage band tee is an absolute holy grail find for your wardrobe. It’s got that effortless, broken-in grunge vibe that looks cool with literally everything. 
+
+Here are two ways to style your new treasure:
+
+**Outfit 1: Effortless Streetwear**
+Pair the band tee with your *Baggy straight-leg jeans, dark wash*. Add the *Black combat boots* for that edgy, 90s rockstar finish, and sling the *Black crossbody bag* across your chest. 
+
+**Outfit 2: Layered Grunge**
+Wear the tee over your *White ribbed tank top* (letting the white peek out the bottom), tucked into the *Wide-leg khaki trousers*. Cinch it with the *Brown leather belt* and finish with *Chunky white sneakers*. 
+
+You're going to wear this piece out!
+```
+
+Fit card:
+
+```
+Scored this faded grey vintage band tee on Depop for just $19 and it has the absolute best broken-in grunge feel. I threw it on with some baggy dark wash jeans and black combat boots for an effortless 90s rockstar look. It is definitely going to be on heavy rotation in my wardrobe.
+```
+
+Trace:
+
+```
+[1] parse_query
+      in:  vintage graphic tee under $30
+      out: {'description': 'vintage graphic tee', 'size': None, 'max_price': 30.0}
+[2] search_listings (via MCP)
+      in:  {'description': 'vintage graphic tee', 'size': None, 'max_price': 30.0}
+      out: 10 items: Vintage Band Tee — Faded Grey, Graphic Tee — 2003 Tour Bootleg Style, Y2K Baby Tee — Butterfly Print … +7 more
+      →    branch: results found, continuing
+[3] select_item
+      in:  first of search_results
+      out: Vintage Band Tee — Faded Grey ($19.0, depop)
+[4] suggest_outfit
+      in:  {'new_item': 'Vintage Band Tee — Faded Grey', 'wardrobe_items': 10}
+      out: Hey friend! That faded vintage band tee is an absolute holy grail find for your wardrobe. It’s got that effort…
+[5] create_fit_card
+      in:  {'outfit': 'Hey friend! That faded vintage band tee …', 'new_item': 'Vintage Band Tee — Faded Grey'}
+      out: Scored this faded grey vintage band tee on Depop for just $19 and it has the absolute best broken-in grunge fe…
+```
+````
 
 ---
 
@@ -263,15 +319,31 @@ that produced it:
      Look for a pattern. Three misses on the same tool is one problem, not
      three. -->
 
+
+
 | # | Criterion | Target | Verdict | How I decided |
 |---|---|---|---|---|
-| 1 |  |  |  |  |
-| 2 |  |  |  |  |
-| 3 |  |  |  |  |
-| 4 |  |  |  |  |
-| 5 |  |  |  |  |
+| 1 | A matching query completes all three tools  | 4 of 5 | MET (5/5) | Every matching run completed all three tools  |
+| 2  | An impossible query stops before the second tool | 5 of 5 | MET (5/5) | Every queries stopped running early if it could not matcg  |
+| 3 | The fit card names the same item as session["selected_item"]: its price and platform match selected_item["price"] and selected_item["platform"].  | 5 of 5 | MET (5/5) | Every try mentioned the selected item in the fit card |
+| 4  | The fit card mentions the item's price and platform, and is 2 to 4 sentences long. | 4 of 5 | MET (5/5) | Every fit card mentioned the selected item's price, the platform where the item was purchased, and was between 2 to 4 sentences |
+| 5 | Price ceiling: every item in search_results has price <= max_price. | 5 of 5 | MET (5/5) | Every item in the search_results for all tries was less than the max_price that the user mentioned |
+
 
 **Diagnoses**
+No criterion missed in this run.
+
+So the question is which target was too easy.
+
+Criterion 4 passed on all 30 fit cards across six different scenarios. Every card had the price, platform, and the required sentences because the prompt in tools.py mentioned the names and prices explicitly. Tighter Target 5 of 5, across 5 different items
+
+Criterion 3 was also too easy. It passed all 5 tries but used the same search queury and selected the same first result. Therefore, it never could have caught the wrong item being passed along. For future tests, I would like to use several different queries. Tigher Target: across 5 different queries, all fit cards name the selected item's price and platform
+
+
+For the other criterion
+Criterion 2 and 5 were deterministic. So 5/5 was expected for both. A miss would have been a bug in the code.
+
+Criterion 1 did pass 5/5, but it missed on an earlier run. Try 5 crashed with a 503 error code from the model. The model call in generate.py returned a 503 (high demand). For this run, there was no 503 error, but I did not fix the problem.
 
 
 
@@ -292,19 +364,64 @@ that produced it:
 **Happy path**
 
 ```
+$ python app.py ask "vintage under 60" --trace
+[1] parse_query
+      in:  vintage under 60
+      out: {'description': 'vintage', 'size': None, 'max_price': 60.0}
+[2] search_listings (via MCP)
+      in:  {'description': 'vintage', 'size': None, 'max_price': 60.0}
+      out: 10 items: Vintage Polo Shirt — Forest Green, Vintage Band Tee — Faded Grey, Oversized Crewneck Sweatshirt — Vintage Navy … +7 more
+      →    branch: results found, continuing
+[3] select_item
+      in:  first of search_results
+      out: Vintage Polo Shirt — Forest Green ($18.0, thredUp)
+[4] suggest_outfit
+      in:  {'new_item': 'Vintage Polo Shirt — Forest Green', 'wardrobe_items': 10}
+      out: Hey friend! Oh, you *totally* need to grab that forest green Ralph Lauren polo—it is such a timeless staple an…
+[5] create_fit_card
+      in:  {'outfit': 'Hey friend! Oh, you *totally* need to gr…', 'new_item': 'Vintage Polo Shirt — Forest Green'}
+      out: Scored this vintage Ralph Lauren forest green polo on thredUp for just $18, and I am obsessed with the color. …
 
+  Found:    Vintage Polo Shirt — Forest Green — $18.0 on thredUp
+
+  Outfit:   Hey friend! Oh, you *totally* need to grab that forest green Ralph Lauren polo—it is such a timeless staple and the color is gorgeous. 
+
+Here are two fun ways to style it using pieces you already own:
+
+**Outfit 1: Casual Streetwear Vibe**
+Pair the vintage polo shirt with your baggy straight-leg jeans, and cinch them together using the brown leather belt. Slip on your chunky white sneakers, and toss the black crossbody bag over your shoulder for an easy, cool-girl everyday look.
+
+**Outfit 2: Earthy & Relaxed**
+Tuck the vintage polo shirt into your wide-leg khaki trousers, accented by the brown leather belt. Finish this classic, preppy outfit with your black combat boots to add a little bit of edge!
+
+  Fit card: Scored this vintage Ralph Lauren forest green polo on thredUp for just $18, and I am obsessed with the color. I tucked it into wide-leg khaki trousers with a leather belt and added black combat boots for a preppy look with a little bit of edge. Such a timeless staple that I'm going to wear on repeat this season!
+
+2 model calls this session, 701 prompt + 236 output tokens
 ```
 
 **Empty search**
 
 ```
+$ python app.py ask "..." --trace
+[1] parse_query
+      in:  ...
+      out: {'description': '', 'size': None, 'max_price': None}
+[2] search_listings (via MCP)
+      in:  {'description': '', 'size': None, 'max_price': None}
+      out: [] (empty)
+      →    branch: empty, stopping before suggest_outfit
 
+  I couldn't tell what kind of item you want from '...'. Name the item, like 'denim jacket', 'graphic tee', 'jeans', or 'sneakers' — this shop carries tops, bottoms, outerwear, shoes, and accessories. You can add a size and a price too, e.g. 'graphic tee size M under $30'.
+
+0 model calls this session
 ```
 
-**On the MCP move:** <!-- what changed in your code, and whether anything
+<!-- **On the MCP move:** what changed in your code, and whether anything
 behaved differently afterwards. If the rewire didn't work, say exactly where it
 broke — the error text and the last thing that worked. That earns the point in
 full. -->
+
+run_agent now calls call_tool("search_listings", {...}) from mcp_client instead of importing the function. The results came back as the same list of dicts, and nothing else changed.
 
 
 
@@ -318,24 +435,27 @@ full. -->
      `python run_eval.py --label after` -->
 
 **What I changed:**
+I changed generate.py to where 503 error now counts as a temporary error. It will wait and retry then. When retries run out, generate() will raise a ModelUnvailable instead of Runtime Error
 
 **Which failure it was meant to fix:**
+It was meant to fix the 503 crash in criterion 1 during the first practice run that I mentioned in the diagnoses.
 
 ### Run Log — After
 
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. A matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET |
+| 2. An impossible query stops before the second tool | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET | 
+| 3. The fit card names the same item as session["selected_item"]: its price and platform match selected_item["price"] and selected_item["platform"]. | 5 of 5  | PASS | PASS | PASS | PASS | PASS | MET |
+| 4. The fit card mentions the item's price and platform, and is 2 to 4 sentences long. | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET |
+| 5. Price ceiling: every item in search_results has price <= max_price. | 5 of 5 | PASS | PASS | PASS | PASS | PASS  | MET |
 
 **Did it help, and how do I know:**
 
 <!-- If it made things worse, say that. Honestly reported, that earns full
      credit and is more interesting than one that worked. -->
 
+All runs passed and model failures now end the run with a message and a trace line instead of a crash. In the practice run, there was a crash. For this run, all runs that were supposed to crash ended with a message and a trace line.
 
 
 ---
@@ -346,37 +466,41 @@ full. -->
      you did. "I ran out of time" is fine if it's true. Pretending nothing is
      left is not. -->
 
+Criterion 3 used the same query and it could never catch the wrong item.
 
+The 503 retry error is not verified because no 503 happended during the last run.
+
+select_item always take the first result and does not check whether it is still broken.
 
 <!-- ═════════════════════════════════════════════════════════════════════
 
      SUBMISSION CHECKLIST — unit 3
 
-       [ ] criteria.md has five numbered criteria, each with a target
-       [ ] Each criterion has a reason underneath it
-       [ ] All five unit 3 sections above have real content
-       [ ] Tool Inventory: all three tools, inputs WITH TYPES, a specific
+       [X] criteria.md has five numbered criteria, each with a target
+       [X] Each criterion has a reason underneath it
+       [X] All five unit 3 sections above have real content
+       [X] Tool Inventory: all three tools, inputs WITH TYPES, a specific
            return value, and the empty case
-       [ ] Planning Loop names the branch rule and agent.py::run_agent
-       [ ] Sample Run: one full query plus the three per-tool tests, as text
-       [ ] At least four new commits
-       [ ] Repository URL submitted — WRITE IT DOWN, you submit the same one
+       [X] Planning Loop names the branch rule and agent.py::run_agent
+       [X] Sample Run: one full query plus the three per-tool tests, as text
+       [X] At least four new commits
+       [X] Repository URL submitted — WRITE IT DOWN, you submit the same one
            next unit
 
      SUBMISSION CHECKLIST — unit 4
 
-       [ ] mcp_server.py exists with one tool registered
+       [X] mcp_server.py exists with one tool registered
            (or a written record of exactly where the rewire broke)
-       [ ] Run Log — Before, five criteria, five tries each
-       [ ] Real output pasted underneath, naming file and function
-       [ ] A verdict on every criterion
-       [ ] A diagnosis for every miss, naming a place AND a mechanism
-       [ ] Loop Trace, with the MCP call visible in it
-       [ ] All three failure modes triggered and handled
-       [ ] One improvement, with Run Log — After in the same format
-       [ ] What's Still Broken
-       [ ] At least four new commits
-       [ ] The SAME repository URL as last unit
+       [X] Run Log — Before, five criteria, five tries each
+       [ X Real output pasted underneath, naming file and function
+       [X] A verdict on every criterion
+       [X] A diagnosis for every miss, naming a place AND a mechanism
+       [X] Loop Trace, with the MCP call visible in it
+       [X] All three failure modes triggered and handled
+       [XX] One improvement, with Run Log — After in the same format
+       [X] What's Still Broken
+       [X] At least four new commits
+       [X] The SAME repository URL as last unit
 
      Do not delete and recreate this repository. Your commit history is what
      shows your criteria existed before your results did.

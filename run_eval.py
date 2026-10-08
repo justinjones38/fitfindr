@@ -191,6 +191,7 @@ def write_report(rows, args):
                 f"- selected_item: {item.get('title', '(none)')}"
                 + (f" (${item.get('price')}, {item.get('platform')})" if item else ""),
                 f"- search_results: {len(session.get('search_results') or [])}",
+                f"- search_result prices: {[r.get('price') for r in session.get('search_results') or []]}",
                 "",
             ]
             if session.get("outfit_suggestion"):
