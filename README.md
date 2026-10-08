@@ -210,6 +210,11 @@ Scored these vintage Levi's 501 jeans on depop for just $38 and they fit like an
 - *What came back:* - It gave me the correct commands to set the project with Git Bash
 - *What I changed:* - I just used the correct commands with Git Bash to set up the projects
 
+**Moment 3**
+- *What I asked for:* - to give advice on changes to prevent 503 error in Criterion 1 
+- *What came back:* - it helped refactor to introduce a loop so that 503 error are treated as temporary errors
+- *What I changed:* - 503 error no longer crashes the code. 
+
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
      Don't fill these in during unit 3.
@@ -239,9 +244,10 @@ Scored these vintage Levi's 501 jeans on depop for just $38 and they fit like an
 **Real output from one try**, pasted as text, naming the file and function
 that produced it:
 
-File: from run_2026-10-07_1452_before.md
-Function: run_eval.py::main
-```
+**File:** `results/run_2026-10-07_1452_before.md` (scenario "matching query completes", try 3)  
+**Function:** `agent.py::run_agent`, run by `run_eval.py::main`. The fit card comes from `tools.py::create_fit_card`.
+
+````
 **Try 3** 
 
 - stopped early: no
@@ -291,7 +297,7 @@ Trace:
       in:  {'outfit': 'Hey friend! That faded vintage band tee …', 'new_item': 'Vintage Band Tee — Faded Grey'}
       out: Scored this faded grey vintage band tee on Depop for just $19 and it has the absolute best broken-in grunge fe…
 ```
-```
+````
 
 ---
 
@@ -327,11 +333,18 @@ Trace:
 **Diagnoses**
 No criterion missed in this run.
 
+So the question is which target was too easy.
+
+Criterion 4 passed on all 30 fit cards across six different scenarios. Every card had the price, platform, and the required sentences because the prompt in tools.py mentioned the names and prices explicitly. Tighter Target 5 of 5, across 5 different items
+
+Criterion 3 was also too easy. It passed all 5 tries but used the same search queury and selected the same first result. Therefore, it never could have caught the wrong item being passed along. For future tests, I would like to use several different queries. Tigher Target: across 5 different queries, all fit cards name the selected item's price and platform
+
+
+For the other criterion
 Criterion 2 and 5 were deterministic. So 5/5 was expected for both. A miss would have been a bug in the code.
 
-Criterion 1 did pass 5/5, but it missed on an earlier run. Try 5 crashed with a 503 error code from the model. There was no model call in generate.py due to the rate limit being exceeded. For this run, there was no 503 error, but I did not fix the problem.
+Criterion 1 did pass 5/5, but it missed on an earlier run. Try 5 crashed with a 503 error code from the model. The model call in generate.py returned a 503 (high demand). For this run, there was no 503 error, but I did not fix the problem.
 
-Criterion 3 passed but all 5 tries used the same search queury and selected the same first result. Therefore, it never could have caught the wrong item being passed along. For future tests, I would like to use several different criterion.
 
 
 ---
@@ -403,10 +416,12 @@ $ python app.py ask "..." --trace
 0 model calls this session
 ```
 
-**On the MCP move:** <!-- what changed in your code, and whether anything
+<!-- **On the MCP move:** what changed in your code, and whether anything
 behaved differently afterwards. If the rewire didn't work, say exactly where it
 broke — the error text and the last thing that worked. That earns the point in
 full. -->
+
+run_agent now calls call_tool("search_listings", {...}) from mcp_client instead of importing the function. The results came back as the same list of dicts, and nothing else changed.
 
 
 
@@ -420,24 +435,27 @@ full. -->
      `python run_eval.py --label after` -->
 
 **What I changed:**
+I changed generate.py to where 503 error now counts as a temporary error. It will wait and retry then. When retries run out, generate() will raise a ModelUnvailable instead of Runtime Error
 
 **Which failure it was meant to fix:**
+It was meant to fix the 503 crash in criterion 1 during the first practice run that I mentioned in the diagnoses.
 
 ### Run Log — After
 
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. A matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET |
+| 2. An impossible query stops before the second tool | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET | 
+| 3. The fit card names the same item as session["selected_item"]: its price and platform match selected_item["price"] and selected_item["platform"]. | 5 of 5  | PASS | PASS | PASS | PASS | PASS | MET |
+| 4. The fit card mentions the item's price and platform, and is 2 to 4 sentences long. | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET |
+| 5. Price ceiling: every item in search_results has price <= max_price. | 5 of 5 | PASS | PASS | PASS | PASS | PASS  | MET |
 
 **Did it help, and how do I know:**
 
 <!-- If it made things worse, say that. Honestly reported, that earns full
      credit and is more interesting than one that worked. -->
 
+All runs passed and model failures now end the run with a message and a trace line instead of a crash. In the practice run, there was a crash. For this run, all runs that were supposed to crash ended with a message and a trace line.
 
 
 ---
@@ -448,7 +466,11 @@ full. -->
      you did. "I ran out of time" is fine if it's true. Pretending nothing is
      left is not. -->
 
+Criterion 3 used the same query and it could never catch the wrong item.
 
+The 503 retry error is not verified because no 503 happended during the last run.
+
+select_item always take the first result and does not check whether it is still broken.
 
 <!-- ═════════════════════════════════════════════════════════════════════
 
@@ -469,16 +491,16 @@ full. -->
 
        [X] mcp_server.py exists with one tool registered
            (or a written record of exactly where the rewire broke)
-       [ ] Run Log — Before, five criteria, five tries each
-       [ ] Real output pasted underneath, naming file and function
-       [ ] A verdict on every criterion
-       [ ] A diagnosis for every miss, naming a place AND a mechanism
+       [X] Run Log — Before, five criteria, five tries each
+       [ X Real output pasted underneath, naming file and function
+       [X] A verdict on every criterion
+       [X] A diagnosis for every miss, naming a place AND a mechanism
        [X] Loop Trace, with the MCP call visible in it
        [X] All three failure modes triggered and handled
-       [ ] One improvement, with Run Log — After in the same format
-       [ ] What's Still Broken
-       [ ] At least four new commits
-       [ ] The SAME repository URL as last unit
+       [XX] One improvement, with Run Log — After in the same format
+       [X] What's Still Broken
+       [X] At least four new commits
+       [X] The SAME repository URL as last unit
 
      Do not delete and recreate this repository. Your commit history is what
      shows your criteria existed before your results did.
