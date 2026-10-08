@@ -18,7 +18,7 @@ import re
 import config
 import trace
 from tools import suggest_outfit, create_fit_card
-from mcp_client import call_tool
+from mcp_client import call_tool, MCPError
 from generate import ModelUnavailable
 
 
@@ -51,6 +51,16 @@ def new_session(query: str, wardrobe: dict) -> dict:
 
 
 # ── planning loop ─────────────────────────────────────────────────────────────
+
+# Loop step -> the name it shows under in the trace, for the error path.
+_STEP_TOOLS = {
+    "parse": "parse_query",
+    "search": "search_listings (via MCP)",
+    "select": "select_item",
+    "suggest": "suggest_outfit",
+    "fit_card": "create_fit_card",
+}
+
 
 def run_agent(query: str, wardrobe: dict) -> dict:
     """
@@ -120,57 +130,66 @@ def run_agent(query: str, wardrobe: dict) -> dict:
         count += 1
         trace.check_iterations(count)
 
-        if next_step == "parse":
-            session["parsed"] = parse_query(query)
-            trace.step("parse_query", inputs=query, returned=str(session["parsed"]))
-            next_step = "search"
+        try:
+            if next_step == "parse":
+                session["parsed"] = parse_query(query)
+                trace.step("parse_query", inputs=query, returned=str(session["parsed"]))
+                next_step = "search"
 
-        elif next_step == "search":
-            parsed = session["parsed"]
-            session["search_results"] = call_tool("search_listings", {
-                "description": parsed["description"],
-                "size": parsed["size"],
-                "max_price": parsed["max_price"],
-            })
+            elif next_step == "search":
+                parsed = session["parsed"]
+                session["search_results"] = call_tool("search_listings", {
+                    "description": parsed["description"],
+                    "size": parsed["size"],
+                    "max_price": parsed["max_price"],
+                })
 
-            # THE BRANCH: nothing matched, so stop here with advice rather
-            # than handing suggest_outfit an item that doesn't exist.
-            if not session["search_results"]:
-                session["error"] = _no_results_message(parsed, query)
-                trace.step("search_listings (via MCP)", inputs=str(parsed),
-                           returned=session["search_results"],
-                           note="branch: empty, stopping before suggest_outfit")
+                # THE BRANCH: nothing matched, so stop here with advice rather
+                # than handing suggest_outfit an item that doesn't exist.
+                if not session["search_results"]:
+                    session["error"] = _no_results_message(parsed, query)
+                    trace.step("search_listings (via MCP)", inputs=str(parsed),
+                               returned=session["search_results"],
+                               note="branch: empty, stopping before suggest_outfit")
+                    next_step = "done"
+                else:
+                    trace.step("search_listings (via MCP)", inputs=str(parsed),
+                               returned=session["search_results"],
+                               note="branch: results found, continuing")
+                    next_step = "select"
+
+            elif next_step == "select":
+                session["selected_item"] = session["search_results"][0]
+                trace.step("select_item", inputs="first of search_results",
+                           returned=session["selected_item"])
+                next_step = "suggest"
+
+            elif next_step == "suggest":
+                session["outfit_suggestion"] = suggest_outfit(
+                    session["selected_item"], session["wardrobe"]
+                )
+                trace.step("suggest_outfit",
+                           inputs=str({"new_item": session["selected_item"]["title"],
+                                       "wardrobe_items": len(session["wardrobe"].get("items") or [])}),
+                           returned=session["outfit_suggestion"])
+                next_step = "fit_card"
+
+            elif next_step == "fit_card":
+                session["fit_card"] = create_fit_card(
+                    session["outfit_suggestion"], session["selected_item"]
+                )
+                trace.step("create_fit_card",
+                           inputs=str({"outfit": session["outfit_suggestion"][:40] + "…",
+                                       "new_item": session["selected_item"]["title"]}),
+                           returned=session["fit_card"])
                 next_step = "done"
-            else:
-                trace.step("search_listings (via MCP)", inputs=str(parsed),
-                           returned=session["search_results"],
-                           note="branch: results found, continuing")
-                next_step = "select"
-
-        elif next_step == "select":
-            session["selected_item"] = session["search_results"][0]
-            trace.step("select_item", inputs="first of search_results",
-                       returned=session["selected_item"])
-            next_step = "suggest"
-
-        elif next_step == "suggest":
-            session["outfit_suggestion"] = suggest_outfit(
-                session["selected_item"], session["wardrobe"]
-            )
-            trace.step("suggest_outfit",
-                       inputs=str({"new_item": session["selected_item"]["title"],
-                                   "wardrobe_items": len(session["wardrobe"].get("items") or [])}),
-                       returned=session["outfit_suggestion"])
-            next_step = "fit_card"
-
-        elif next_step == "fit_card":
-            session["fit_card"] = create_fit_card(
-                session["outfit_suggestion"], session["selected_item"]
-            )
-            trace.step("create_fit_card",
-                       inputs=str({"outfit": session["outfit_suggestion"][:40] + "…",
-                                   "new_item": session["selected_item"]["title"]}),
-                       returned=session["fit_card"])
+        except (ModelUnavailable, MCPError) as exc:
+            # A model or MCP failure ends the run with a message instead of a
+            # stack trace, and the trace names the step that failed.
+            failed = _STEP_TOOLS.get(next_step, next_step)
+            session["error"] = f"Couldn't finish: {failed} failed. {exc}"
+            trace.step(failed, inputs="(failed)",
+                       note=f"error: {type(exc).__name__}, stopping")
             next_step = "done"
 
     return session

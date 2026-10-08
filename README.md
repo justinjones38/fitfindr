@@ -313,6 +313,18 @@ Trace:
      Look for a pattern. Three misses on the same tool is one problem, not
      three. -->
 
+
+
+| # | Criterion | Target | Verdict | How I decided |
+|---|---|---|---|---|
+| 1 | A matching query completes all three tools  | 4 of 5 | MET (5/5) | Every matching run completed all three tools  |
+| 2  | An impossible query stops before the second tool | 5 of 5 | MET (5/5) | Every queries stopped running early if it could not matcg  |
+| 3 | The fit card names the same item as session["selected_item"]: its price and platform match selected_item["price"] and selected_item["platform"].  | 5 of 5 | MET (5/5) | Every try mentioned the selected item in the fit card |
+| 4  | The fit card mentions the item's price and platform, and is 2 to 4 sentences long. | 4 of 5 | MET (5/5) | Every fit card mentioned the selected item's price, the platform where the item was purchased, and was between 2 to 4 sentences |
+| 5 | Price ceiling: every item in search_results has price <= max_price. | 5 of 5 | MET (5/5) | Every item in the search_results for all tries was less than the max_price that the user mentioned |
+
+
+**Diagnoses**
 No criterion missed in this run.
 
 Criterion 2 and 5 were deterministic. So 5/5 was expected for both. A miss would have been a bug in the code.
@@ -320,17 +332,6 @@ Criterion 2 and 5 were deterministic. So 5/5 was expected for both. A miss would
 Criterion 1 did pass 5/5, but it missed on an earlier run. Try 5 crashed with a 503 error code from the model. There was no model call in generate.py due to the rate limit being exceeded. For this run, there was no 503 error, but I did not fix the problem.
 
 Criterion 3 passed but all 5 tries used the same search queury and selected the same first result. Therefore, it never could have caught the wrong item being passed along. For future tests, I would like to use several different criterion.
-
-| # | Criterion | Target | Verdict | How I decided |
-|---|---|---|---|---|
-| 1 |  |  |  |  |
-| 2 |  |  |  |  |
-| 3 |  |  |  |  |
-| 4 |  |  |  |  |
-| 5 |  |  |  |  |
-
-**Diagnoses**
-
 
 
 ---
