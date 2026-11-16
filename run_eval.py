@@ -40,6 +40,8 @@ import scenarios as scenario_module
 def run_once(scenario, use_trace=True):
     """One scenario, one try. Returns everything worth recording."""
     from agent import run_agent
+    import runlog
+    runlog.set_source("eval")
     from utils.data_loader import get_example_wardrobe, get_empty_wardrobe
     import trace as trace_module
 

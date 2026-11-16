@@ -4,6 +4,95 @@ Everything about how the starter works and how to use it.
 
 ---
 
+## Run it locally, with logs (unit 5)
+
+**Path: local, with structured logs.** FitFindr is not hosted. It runs on your
+machine from the command line, and every run writes one JSON record to
+`logs/runs.jsonl`.
+
+### What the environment needs
+
+| Need | Detail |
+|---|---|
+| Python | **3.11, 3.12 or 3.13.** Not 3.14 (the pinned packages don't support it). Check with `python --version` (`python3 --version` on macOS/Linux) |
+| git | To clone the repo |
+| A Gemini API key | Free, from <https://aistudio.google.com>. It goes in a file called `.env` and nowhere else |
+| Network | The model calls go to Google. Search runs locally, so a query that matches nothing still works offline |
+| Disk | About 300 MB for the virtual environment |
+
+### Exact commands
+
+**Windows (PowerShell)**
+
+```powershell
+git clone https://github.com/justinjones38/fitfindr.git
+cd fitfindr
+git checkout working-branch            # the unit 5 work lives on this branch
+python -m venv .venv
+.venv\Scripts\Activate.ps1             # if blocked: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+pip install -r requirements.txt
+copy .env.example .env                 # then open .env and replace your_key_here with your key
+python test.py                         # must end with every check passing
+python app.py ask 'vintage graphic tee under $30' --trace
+```
+
+**macOS / Linux / Git Bash**
+
+```bash
+git clone https://github.com/justinjones38/fitfindr.git
+cd fitfindr
+git checkout working-branch
+python3 -m venv .venv
+source .venv/bin/activate              # Git Bash on Windows: source .venv/Scripts/activate
+pip install -r requirements.txt
+cp .env.example .env                   # then put your key in .env
+python test.py
+python app.py ask 'vintage graphic tee under $30' --trace
+```
+
+**Use single quotes around the query** in every shell. In PowerShell, `$30`
+inside double quotes is read as a variable and disappears.
+
+**What "it works" looks like:** a trace with 5 steps (`parse_query`,
+`search_listings (via MCP)`, `pick_best_match`, `suggest_outfit`,
+`create_fit_card`), then `Found:`, `Outfit:` and `Fit card:`, then a line like
+`3 model calls this session, ... tokens`. A run takes about 4 seconds, or up to a
+minute if it has to wait out the rate limit.
+
+### Where the logs go
+
+| Command | What it does |
+|---|---|
+| `python runlog.py` | Print the last 10 run records, one JSON object per line |
+| `python runlog.py -n 25` | The last 25 |
+| `python measure_cost.py` | 10 full runs with the cache **off**, then the average model calls, tokens and seconds per run, read from the log |
+
+`logs/` is created on the first run and is in `.gitignore`. Each record has
+`ts`, `run_id`, `source`, `query`, `parsed`, `status` (`ok` / `no_results` /
+`error` / `crash`), `error`, `n_results`, `candidates`, `selected`,
+`pick_fallback`, `pick_reason`, `fit_card`, `duration_s`, `model_calls`,
+`cache_hits`, `prompt_tokens` and `output_tokens`. The fields are documented at
+the top of `runlog.py`.
+
+Every way into the agent writes a record (`app.py`, `run_eval.py`, `serve.py`,
+`measure_cost.py`), because the logging lives in `agent.py::run_agent` itself.
+Failed runs are logged too: a run that ends on a bad key or an MCP error is
+logged with `status: "error"`, and an unexpected exception is logged with
+`status: "crash"` before it is re-raised.
+
+### If it breaks on a fresh clone
+
+| What you see | Fix |
+|---|---|
+| `No GEMINI_API_KEY found` | You skipped `copy .env.example .env`, or didn't paste the key in. On Windows, make sure it didn't save as `.env.txt` |
+| `pick_best_match` isn't in the trace | You're on `main`. Run `git checkout working-branch` |
+| `ModuleNotFoundError: No module named 'dotenv'` (or `mcp`, `google`) | The virtual environment isn't active, or `pip install` ran outside it. Activate it, then install again |
+| `Activate.ps1 cannot be loaded because running scripts is disabled` | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, then activate again |
+| `[rate limit] ... Waiting 34s` | Normal. The free tier allows 15 requests a minute and one full run makes 3 (measured), so about 5 runs a minute before it waits |
+| A bad-key test still prints a fit card | The answers came from the cache (`3 served from cache`). Run it with the cache off: `AI201_CACHE=0` in bash, or `$env:AI201_CACHE='0'` in PowerShell |
+
+---
+
 ## Before your first class
 
 Setup happens **before class**. The [environment setup page](../pages/ide_setup)

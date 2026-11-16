@@ -138,6 +138,9 @@ def _ask_one(query, wardrobe, use_trace):
 def cmd_ask(args):
     from utils.data_loader import get_example_wardrobe, get_empty_wardrobe
     import generate
+    import runlog
+
+    runlog.set_source("cli")
 
     wardrobe = get_empty_wardrobe() if args.empty_wardrobe else get_example_wardrobe()
     if args.empty_wardrobe:
