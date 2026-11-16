@@ -17,6 +17,7 @@ import re
 
 import config
 import trace
+import runlog
 from tools import suggest_outfit, create_fit_card, pick_best_match, PICK_TOP_N
 from mcp_client import call_tool, MCPError
 from generate import ModelUnavailable
@@ -48,6 +49,7 @@ def new_session(query: str, wardrobe: dict) -> dict:
         "outfit_suggestion": None,   # what suggest_outfit returned
         "fit_card": None,            # what create_fit_card returned
         "error": None,               # set when the run ended early
+        "error_kind": None,          # "no_results" or "exception" — which way it ended early
     }
 
 
@@ -64,6 +66,22 @@ _STEP_TOOLS = {
 
 
 def run_agent(query: str, wardrobe: dict) -> dict:
+    """
+    Run the loop once and return the finished session, writing one structured
+    record to logs/runs.jsonl (see runlog.py) whether the run succeeded,
+    stopped early, errored, or crashed. A crash is logged, then re-raised.
+    """
+    ctx = runlog.start()
+    try:
+        session = _run_loop(query, wardrobe)
+    except BaseException as exc:
+        runlog.finish(ctx, query, wardrobe, None, crash=exc)
+        raise
+    runlog.finish(ctx, query, wardrobe, session)
+    return session
+
+
+def _run_loop(query: str, wardrobe: dict) -> dict:
     """
     Run the loop once and return the finished session.
 
@@ -149,6 +167,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                 # than handing suggest_outfit an item that doesn't exist.
                 if not session["search_results"]:
                     session["error"] = _no_results_message(parsed, query)
+                    session["error_kind"] = "no_results"
                     trace.step("search_listings (via MCP)", inputs=str(parsed),
                                returned=session["search_results"],
                                note="branch: empty, stopping before suggest_outfit")
@@ -165,8 +184,9 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                 # problem it falls back to the first result and says why.
                 pick = pick_best_match(session["search_results"], session["wardrobe"])
                 session["selected_item"] = pick["item"]
-                session["pick"] = {"reason": pick["reason"], "fallback": pick["fallback"]}
                 top = session["search_results"][:PICK_TOP_N]
+                session["pick"] = {"reason": pick["reason"], "fallback": pick["fallback"],
+                                   "candidates": [c["id"] for c in top]}
                 trace.step("pick_best_match",
                            inputs=str({"candidates": [c["id"] for c in top],
                                        "wardrobe_items": len(session["wardrobe"].get("items") or [])}),
@@ -199,6 +219,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
             # stack trace, and the trace names the step that failed.
             failed = _STEP_TOOLS.get(next_step, next_step)
             session["error"] = f"Couldn't finish: {failed} failed. {exc}"
+            session["error_kind"] = "exception"
             trace.step(failed, inputs="(failed)",
                        note=f"error: {type(exc).__name__}, stopping")
             next_step = "done"
