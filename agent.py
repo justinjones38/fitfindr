@@ -17,7 +17,7 @@ import re
 
 import config
 import trace
-from tools import suggest_outfit, create_fit_card
+from tools import suggest_outfit, create_fit_card, pick_best_match, PICK_TOP_N
 from mcp_client import call_tool, MCPError
 from generate import ModelUnavailable
 
@@ -43,6 +43,7 @@ def new_session(query: str, wardrobe: dict) -> dict:
         "parsed": {},                # description / size / max_price you pulled out of it
         "search_results": [],        # everything search_listings returned
         "selected_item": None,       # the one you chose — goes into suggest_outfit
+        "pick": None,                # pick_best_match's reason + fallback for selected_item
         "wardrobe": wardrobe,        # the user's wardrobe
         "outfit_suggestion": None,   # what suggest_outfit returned
         "fit_card": None,            # what create_fit_card returned
@@ -56,7 +57,7 @@ def new_session(query: str, wardrobe: dict) -> dict:
 _STEP_TOOLS = {
     "parse": "parse_query",
     "search": "search_listings (via MCP)",
-    "select": "select_item",
+    "select": "pick_best_match",
     "suggest": "suggest_outfit",
     "fit_card": "create_fit_card",
 }
@@ -159,9 +160,19 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                     next_step = "select"
 
             elif next_step == "select":
-                session["selected_item"] = session["search_results"][0]
-                trace.step("select_item", inputs="first of search_results",
-                           returned=session["selected_item"])
+                # Unit 5: choose from the top results using the wardrobe,
+                # rather than always taking the first. Never raises; on any
+                # problem it falls back to the first result and says why.
+                pick = pick_best_match(session["search_results"], session["wardrobe"])
+                session["selected_item"] = pick["item"]
+                session["pick"] = {"reason": pick["reason"], "fallback": pick["fallback"]}
+                top = session["search_results"][:PICK_TOP_N]
+                trace.step("pick_best_match",
+                           inputs=str({"candidates": [c["id"] for c in top],
+                                       "wardrobe_items": len(session["wardrobe"].get("items") or [])}),
+                           returned=session["selected_item"],
+                           note=(f"fallback: {pick['fallback']}, using first result"
+                                 if pick["fallback"] else f"picked: {pick['reason']}"))
                 next_step = "suggest"
 
             elif next_step == "suggest":
