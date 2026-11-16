@@ -485,19 +485,24 @@ select_item always take the first result and does not check whether it is still 
 
 ---
 
-## The Shape
+## Capstone
+
+FitFindr, extended with one new capability (`pick_best_match`), then run,
+logged, measured, tested and improved.
+
+### The Shape
 
 **Shape C: Extend one capability.**
 
 I'm adding a fourth tool, `pick_best_match`, that sits between `search_listings` and `suggest_outfit` in `agent.py::run_agent`. Right now the loop always takes the first search result as `selected_item`, so the choice depends only on keyword score and ignores the user's wardrobe. That's the gap I listed under What's Still Broken. The new tool takes the top 3 results and the wardrobe, makes one model call to pick the listing that goes with the most wardrobe pieces, and returns that listing's `id` with a one-sentence reason. The loop uses that listing as `selected_item` and adds a `pick_best_match` trace line. If the model returns an `id` that isn't in the top 3, or the call fails, the tool falls back to the first result and the trace says so. The empty-search branch doesn't change: if there are no results, the agent stops before this tool runs. I'll know it works if the chosen item is always one of the real top 3 results, and if its reason names at least one actual wardrobe item.
 
-### Out of scope
+#### Out of scope
 
 - **I'm not changing how `search_listings` scores or filters results.** The keyword scoring in `tools.py` and the price and size filters stay as they are. The new tool only re-orders what search already returns, so criterion 5 (price ceiling) can't break.
 - **I'm not moving the other tools to MCP.** Only `search_listings` goes through `mcp_server.py`. `pick_best_match` will be a plain function in `tools.py`, like `suggest_outfit` and `create_fit_card`.
 - **I'm not rebuilding the interface or the prompts for the other tools.** `app.py`, the `suggest_outfit` prompt and the `create_fit_card` prompt stay the same. The only new output is one extra trace line.
 
-### Size check
+#### Size check
 
 | Piece | Estimate |
 |---|---|
@@ -509,7 +514,7 @@ I'm adding a fourth tool, `pick_best_match`, that sits between `search_listings`
 
 This fits under the ninety-minute limit because it's one function, one model call and one new branch (fall back to the first result), and it reuses `generate.py` and the existing trace. If it starts to run long, I'll cut the "reason" sentence and return only the `id`.
 
-### Build notes
+#### Build notes
 
 - **Where it lives:** `tools.py::pick_best_match`, called from the `select` step of `agent.py::run_agent`. The pick's reason and fallback go in `session["pick"]`.
 - **One change from the plan:** the `pick_best_match` trace line *replaces* the old `select_item` line instead of being added after it. Both lines would have shown the same choice, so the trace stays at 5 steps on the happy path and 2 on the empty path.
@@ -550,7 +555,7 @@ Fallback visible in the trace (empty wardrobe):
 
 ---
 
-## The Run Path
+### The Run Path
 
 **Local, with logs.** FitFindr is not hosted. The exact start commands, what
 the environment needs, and where the logs go are in
@@ -588,7 +593,7 @@ sequence with PowerShell syntax, and I didn't run it from a clean clone.
 
 ---
 
-## Instrumentation
+### Instrumentation
 
 Every call to `agent.py::run_agent` writes one JSON line to `logs/runs.jsonl`
 through `runlog.py`, whether the run succeeded, stopped on an empty search,
@@ -641,7 +646,7 @@ going past `MAX_ITERATIONS`, and it's untested.
 
 ---
 
-## What It Costs
+### What It Costs
 
 **One full FitFindr run costs 3 model calls and about 1,454 tokens
 (1,171 prompt + 283 output), and takes a median 4.1 seconds.** The mean is
@@ -698,9 +703,44 @@ What the numbers say:
   server process). A bad key makes 2 rejected calls, uses 0 tokens, and takes
   about 6 s.
 
+#### After the fix, and for 100 people a day
+
+The fix (below) changed the pick prompt, so I re-measured it from the 30
+full-wardrobe runs of the after-run, scored the same way (log records, cache
+off): **3.13 model calls, 1,198 prompt + 286 output = 1,484 tokens, median
+3.2 s per run.** The prompt is about 27 tokens longer.
+
+At Google's list price for `gemini-3.5-flash-lite` ($0.30 per 1M input
+tokens, $2.50 per 1M output tokens), one run costs:
+
+```
+prompt:  1,198 tokens × $0.30 / 1,000,000 = $0.000359
+output:    286 tokens × $2.50 / 1,000,000 = $0.000715
+one run                                  = $0.00107
+```
+
+**100 people a day, one search each, would cost about $0.11 a day (about $3.22
+a month), and use 300 requests and 148,400 tokens a day:**
+
+```
+requests: 100 runs × 3 calls          =     300 requests/day
+tokens:   100 runs × 1,484 tokens      = 148,400 tokens/day
+            (119,800 prompt + 28,600 output)
+dollars:  119,800 × $0.30/1M = $0.0359
+           28,600 × $2.50/1M = $0.0715
+                               $0.1074/day × 30 days = $3.22/month
+```
+
+The token counts are measured. The price per token is Google's published list
+price, the one number here I didn't measure. At 3 searches per person it's
+$0.32 a day and 900 requests. Money isn't the limit here, the rate is: at
+15 requests a minute, 300 requests take at least 20 minutes of the day. And
+`serve.py` handles one request at a time at ~3–4 s each, so 100 people
+arriving in the same minute would wait up to about 6 minutes.
+
 ---
 
-## Unit 5 Run Log
+### Unit 5 Run Log
 
 Each run is one `python eval_unit5.py --label runN`. It runs everything for all
 five criteria, writes it to `results/`, and scores each try against the
@@ -734,7 +774,7 @@ in all three runs. For criterion 3 the denominator is the tries where the model
 made the pick, and that was 10 in every run, because criterion 2 never fell
 back.
 
-### Real output, one try per criterion (from run 2)
+#### Real output, one try per criterion (from run 2)
 
 **File:** `results/unit5_2026-11-15_1951_run2.md`
 **Function:** `eval_unit5.py::main`, which runs `agent.py::run_agent`. The log
@@ -747,7 +787,7 @@ lines are written by `runlog.py::finish`, the pick is made by
 first. The id is in the real top 3 (C1), `pick_fallback` is `null` (C2), and
 the reason names three wardrobe pieces exactly (C3):
 
-#### Full wardrobe, try 1: `vintage graphic tee under $30`
+##### Full wardrobe, try 1: `vintage graphic tee under $30`
 
 - C1 PASS: candidates ['lst_033', 'lst_006', 'lst_002'] vs first 3 of search_results ['lst_033', 'lst_006', 'lst_002']; selected lst_006
 - C2 PASS: pick_fallback = None
@@ -762,7 +802,7 @@ wardrobe. It took the first result (`lst_033`) with the fallback text and
 `model_calls: 2`, so no request was spent on the pick. The 40.9 s is a wait
 for the rate limit, not work.
 
-#### Empty wardrobe, try 1: `vintage graphic tee under $30`: PASS
+##### Empty wardrobe, try 1: `vintage graphic tee under $30`: PASS
 
 - selected is first result: yes, fallback text: yes, status ok: yes, has fit card: yes, model_calls == 2: yes (model_calls=2, first result lst_033)
 
@@ -775,7 +815,7 @@ The pick fell back instead of crashing, the run stopped at `suggest_outfit`
 with a message and no traceback, and exactly one `status: "error"` line was
 written:
 
-#### Bad key, try 1: PASS
+##### Bad key, try 1: PASS
 
 - message, no traceback: yes, pick fell back: yes, ended at suggest_outfit: yes, exactly 1 new log line: yes, status error + duration: yes (exit code 0, new log lines 1)
 
@@ -811,7 +851,7 @@ Log line:
 (`source` reads `cli` rather than `eval5` because `app.py` sets its own source
 tag, which is accurate: that run came through the CLI.)
 
-### What this run does and doesn't show
+#### What this run does and doesn't show
 
 - **All 15 cells met. That's evidence about criteria 1, 4 and 5, and weaker
   evidence about 2 and 3.** Criteria 1, 4 and 5 are deterministic guards, so
@@ -829,12 +869,194 @@ tag, which is accurate: that run came through the CLI.)
   (5, 3 and 2 per run): `vintage graphic tee` went to `lst_006` all 6 times,
   `sneakers` to `lst_019` 3 of 6, and `denim jacket` to `lst_016` once. It
   never picked the 3rd candidate.
+  **(Correction after diagnosis: 3 of those 10 were contradictions, where
+  the reason argued for the other item. See Before and After.)**
 - **Temperature 0.0 isn't deterministic here.** The sneakers and denim queries
   got different picks between tries with identical prompts. That doesn't break
   a criterion, but it means "same query, same item" isn't a promise the system
   makes.
 - **Nothing crashed, so `status: "crash"` is still untested.** All 15 bad-key
   tries were caught as `error`.
+
+---
+
+### Verdicts, Diagnosis, and the Improvement
+
+**Verdicts against the targets I set:** all five MET, in all three runs.
+
+| # | Criterion | Target | Verdict | How I decided |
+|---|---|---|---|---|
+| 1 | Pick is one of the real top 3 | 10 of 10 | MET (10, 10, 10) | `selected.id` in `candidates`, and `candidates` = first 3 of `search_results`, every try |
+| 2 | Model makes the pick | 9 of 10 | MET (10, 10, 10) | `pick_fallback` was `null` in all 30 tries |
+| 3 | Reason names a wardrobe piece | 8 of 10 | MET (10, 10, 10) | a wardrobe name (up to its comma) was in every reason |
+| 4 | Empty wardrobe falls back, no pick call | 5 of 5 | MET (5, 5, 5) | first result, fallback text, `ok`, fit card, `model_calls == 2` |
+| 5 | Bad key leaves a record | 5 of 5 | MET (5, 5, 5) | message with no traceback, pick fell back, ended at `suggest_outfit`, exactly 1 `error` line |
+
+**Were the targets set low? Criterion 3's was, and its check was worse than
+low.** Reading the saved reasons, three passed while arguing *against* the
+item that was picked:
+
+```
+run 1  picked lst_019 (Platform Sneakers — White Chunky Sole)
+       "The chunky white sneakers would clash with her existing chunky white
+        sneakers, making lst_035 the better versatile choice ..."
+run 1  picked lst_019
+       "The chunky white sneakers would clash with the shopper's existing chunky
+        white sneakers, making the off-white low-top canvas sneakers a better ..."
+run 2  picked lst_019
+       "The chunky white sneakers would be redundant since they already own a
+        pair of chunky white sneakers, making the off-white canvas sneakers a
+        better cho..."
+```
+
+All three passed criterion 3, because "chunky white sneakers" is a wardrobe
+name. I added a tightened version, **3a**, under criterion 3 in `criteria.md`,
+leaving the original line in place: *in 10 of 10 tries the reason contains no
+other candidate's id and no word from another candidate's title*. Re-scoring
+the saved before-runs with `python eval_unit5.py --rescore` gives **8/10, 9/10,
+10/10, so MISSED.**
+
+**Diagnosis.** The stage is `tools.py::pick_best_match`, specifically the
+format its prompt asked for. The mechanism: the prompt asked for `ID:` first
+and `REASON:` second, so the model committed to an id before writing any
+reasoning. On the one close call in the test set (two pairs of sneakers, one
+of which duplicates a pair the shopper already owns), the reasoning that came
+after the id went the other way. It's one problem with three symptoms. Every
+lst_019 pick in the before-runs was one of the three, and no other query
+produced one. The parser couldn't catch it because it reads the id and the
+reason separately and never checks one against the other.
+
+**The improvement (one change, `91f606c`):** the prompt now asks for
+`REASON:` first ("one sentence about the listing you chose ... Don't mention
+the other listings") and then `ID:` ("the id of the listing your REASON is
+about"). The parser didn't change. It already read the two lines in either
+order.
+
+#### Before and after, side by side
+
+Same script (`eval_unit5.py`), same queries, three runs each, cache off.
+
+| Criterion | Target | Before 1 | Before 2 | Before 3 | Before | After 1 | After 2 | After 3 | After |
+|---|---|---|---|---|---|---|---|---|---|
+| 1. Pick is one of the real top 3 | 10 of 10 | 10/10 | 10/10 | 10/10 | MET | 10/10 | 10/10 | 10/10 | MET |
+| 2. Model makes the pick | 9 of 10 | 10/10 | 10/10 | 10/10 | MET | 10/10 | 10/10 | 10/10 | MET |
+| 3. Reason names a wardrobe piece | 8 of 10 | 10/10 | 10/10 | 10/10 | MET | 10/10 | 10/10 | 10/10 | MET |
+| 3a. *(tightened)* Reason argues for the picked item | 10 of 10 | 8/10 | 9/10 | 10/10 | **MISSED** | 10/10 | 10/10 | 10/10 | **MET** |
+| 4. Empty wardrobe falls back, no pick call | 5 of 5 | 5/5 | 5/5 | 5/5 | MET | 5/5 | 5/5 | 5/5 | MET |
+| 5. Bad key leaves a record | 5 of 5 | 5/5 | 5/5 | 5/5 | MET | 5/5 | 5/5 | 5/5 | MET |
+| *not a criterion:* pick ≠ first keyword result | none | 5/10 | 3/10 | 2/10 | | 0/10 | 0/10 | 0/10 | |
+| *not a criterion:* tokens per full run (mean of 30) | none | 1,459 | | | | 1,484 | | | |
+
+Before files: `results/unit5_2026-11-15_1948_run1.md`, `..._1951_run2.md`,
+`..._1953_run3.md`. After files: `results/unit5_2026-11-15_2001_after1.md`,
+`..._2004_after2.md`, `..._2007_after3.md`.
+
+The same sneakers query, after (`results/unit5_2026-11-15_2001_after1.md`,
+`eval_unit5.py::full_wardrobe_tries`):
+
+```
+picked lst_035 (Low-Top Canvas Sneakers — Off-White)
+"The off-white canvas sneakers are a versatile, minimal basic that will easily
+ pair with the white ribbed tank top ..."
+```
+
+**Did it help? It fixed what it was aimed at, and it cost the extension most
+of its effect.** 3a went from MISSED (8, 9, 10) to MET (10, 10, 10). The
+sneakers pick is now the item the reason argues for, and none of the 30
+after-tries contradicts itself. The trade: the model now picks the **first**
+keyword result in 30 of 30 tries, against 20 of 30 before. Before the fix,
+`vintage graphic tee` went to `lst_006` (result #2) in all 6 tries, with a
+reason that named three wardrobe pieces and didn't contradict itself. After
+it, it goes to `lst_033` (result #1) in all 6. So 7 of the before-run's
+non-first picks were genuine, and the fix removed those along with the 3 bad
+ones. None of my five criteria measures whether the pick ever differs from
+the old "take the first result" behavior, which is why the table is all MET
+while the extension now changes nothing about which item the user gets. It
+still adds a correct, non-contradicting reason. The cost was about 25 more
+tokens a run, which is negligible.
+
+---
+
+### What's Still Broken
+
+- **The pick always agrees with the keyword ranking now (0 of 30 differ).**
+  The new tool still runs, still costs one call per run, and still gives a
+  reason, but it hasn't changed the chosen item once since the fix. My guess
+  is position bias: with the reason written first and "don't mention the other
+  listings", the model settles on the first listing it reads, and that's always
+  the top keyword match. I haven't tested this. What I'd do is in What I'd Do
+  Next. I stopped because the milestone allows one improvement, and a second
+  prompt change would make it impossible to say which change did what.
+- **Targets set too low, even after 3a:**
+  - Criterion 2 (9 of 10) never fell back in 60 tries, so I'd tighten it to
+    **10 of 10**. The 503 allowance was never needed, and `generate.py`'s
+    retries handled the one 503 I saw during the cost runs.
+  - Criterion 3 (8 of 10) passed 60 of 60, because the model copies wardrobe
+    names word for word at temperature 0.0. With 3a beside it, I'd raise it to
+    **10 of 10** too.
+  - I'd add a criterion that measures the extension's effect rather than its
+    safety: *on `vintage graphic tee under $30`, the pick is the same item
+    whichever order the 3 candidates are listed in, in 5 of 5 tries.*
+- **Criterion 2's original failure mode is still untested on a real reply.**
+  A reply formatted as `**ID:** lst_006` still wouldn't parse and would fall
+  back. The model never produced one, so all I have is the offline stub test.
+- **The `crash` path in `run_agent` is untested.** Every failure I triggered
+  was caught as `error` or `no_results`.
+- **Temperature 0.0 wasn't deterministic** before the fix: the sneakers and
+  denim picks varied between identical prompts. After the fix every query got
+  the same pick every time, which looks like the position bias, not stability.
+
+---
+
+### What I'd Do Next
+
+First, I'd run the same 10 queries with the 3 candidates shuffled in the
+prompt and check whether the pick follows the item or follows the position.
+The extension's whole claim is that it picks by wardrobe, and right now 30 of
+30 picks are the first item listed, so I can't tell whether the model is
+choosing or just taking whatever comes first. Every other improvement to the
+pick depends on that answer.
+
+---
+
+### How I Used AI
+
+I used Claude (Claude Code, in VS Code) throughout the capstone, mainly for
+three things: getting the commands right, making my explanations clearer, and
+adding detail to the README and RUNNING.md.
+
+**Moment 1: getting the commands right**
+
+- *What I asked for:* the exact commands to set up and test the project from a
+  fresh clone, and to run the agent with the cache off and a deliberately bad
+  API key.
+- *What came back:* the clone → venv → `pip install` → `.env` → `test.py`
+  sequence for both PowerShell and Git Bash, plus
+  `AI201_CACHE=0 GEMINI_API_KEY=bad python app.py ask '...' --trace`.
+- *What I changed:* the first bad-key run "passed" because every answer came
+  from the cache. I added `AI201_CACHE=0` to the command, to RUNNING.md's
+  troubleshooting table, and to the criteria.
+
+**Moment 2: improving explanations**
+
+- *What I asked for:* help turning my verdicts and diagnosis into a place plus
+  a mechanism instead of a description.
+- *What came back:* the diagnosis for criterion 3a: the prompt asked for the
+  ID before the reason, so the model committed to an item before reasoning.
+- *What I changed:* I checked it against the saved run files first. All three
+  contradictions were on the same sneakers query, so I wrote it up as one
+  problem with three symptoms, not three problems.
+
+**Moment 3: more detail in the README and RUNNING.md**
+
+- *What I asked for:* more detail in RUNNING.md (what the environment needs,
+  where the logs go, what breaks on a fresh clone) and in the README's run log
+  and cost sections.
+- *What came back:* the environment table, the troubleshooting table, the
+  log-field list, and the per-run cost table with the arithmetic shown.
+- *What I changed:* I corrected numbers I'd guessed against the measured ones:
+  RUNNING.md said about 4 model calls a run, and the measurement said 3. An
+  empty run took about 2 s, not 3.
 
 <!-- ═════════════════════════════════════════════════════════════════════
 
