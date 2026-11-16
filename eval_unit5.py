@@ -24,6 +24,7 @@ asserted.
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -35,7 +36,7 @@ import generate  # noqa: E402
 import runlog  # noqa: E402
 from agent import run_agent  # noqa: E402
 from tools import PICK_TOP_N  # noqa: E402
-from utils.data_loader import get_example_wardrobe, get_empty_wardrobe  # noqa: E402
+from utils.data_loader import get_example_wardrobe, get_empty_wardrobe, load_listings  # noqa: E402
 from measure_cost import QUERIES  # noqa: E402
 
 BAD_KEY_QUERY = "vintage graphic tee under $30"
@@ -44,12 +45,46 @@ TARGETS = {
     1: ("The pick is always one of the real top 3 search results", 10, 10),
     2: ("With a full wardrobe, the model actually makes the pick", 9, 10),
     3: ("The reason names a real wardrobe piece", 8, 10),
+    "3a": ("(tightened) The reason argues for the item that was picked", 10, 10),
     4: ("An empty wardrobe falls back without a model call for the pick", 5, 5),
     5: ("A failed run leaves a record, not an absence", 5, 5),
 }
 
 WARDROBE_NAMES = [i["name"].split(",")[0].strip().lower()
                   for i in get_example_wardrobe()["items"]]
+
+
+LISTINGS = {l["id"]: l for l in load_listings()}
+
+
+def _words(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", (text or "").lower()))
+
+
+WARDROBE_WORDS = set().union(*(_words(i["name"]) for i in get_example_wardrobe()["items"]))
+
+
+def other_candidate_mentions(rec: dict) -> list[str]:
+    """
+    Criterion 3a: what in pick_reason points at a candidate that WASN'T picked.
+    Another candidate's id, or a word from its title. Words in the picked item's
+    title or style tags, the query, or any wardrobe name are ignored. Empty
+    list = the reason is about the pick.
+    """
+    reason = (rec.get("pick_reason") or "").lower()
+    sel = (rec.get("selected") or {}).get("id")
+    if sel not in LISTINGS:
+        return []
+    ignore = (_words(LISTINGS[sel]["title"]) | _words(" ".join(LISTINGS[sel]["style_tags"]))
+              | _words(rec.get("query")) | WARDROBE_WORDS)
+    hits = []
+    for cid in rec.get("candidates") or []:
+        if cid == sel or cid not in LISTINGS:
+            continue
+        if cid.lower() in reason:
+            hits.append(cid)
+        hits += sorted((_words(LISTINGS[cid]["title"]) - ignore) & _words(reason))
+    return hits
 
 
 def _last_record() -> dict:
@@ -77,8 +112,10 @@ def full_wardrobe_tries(out):
         reason = (rec["pick_reason"] or "").lower()
         named = [n for n in WARDROBE_NAMES if n in reason]
         c3 = made_pick and bool(named)
+        against = other_candidate_mentions(rec)
+        c3a = not against
 
-        tries.append({"query": query, "c1": c1, "c2": made_pick, "c3": c3,
+        tries.append({"query": query, "c1": c1, "c2": made_pick, "c3": c3, "c3a": c3a,
                       "made_pick": made_pick, "named": named, "rec": rec,
                       "expected": expected})
         out.append(f"### Full wardrobe, try {i + 1}: `{query}`\n")
@@ -87,6 +124,7 @@ def full_wardrobe_tries(out):
         out.append(f"- C2 {'PASS' if made_pick else 'FAIL'}: pick_fallback = {rec['pick_fallback']!r}")
         out.append(f"- C3 {'PASS' if c3 else ('n/a (fallback)' if not made_pick else 'FAIL')}: "
                    f"wardrobe names found in reason: {named}")
+        out.append(f"- C3a {'PASS' if c3a else 'FAIL'}: reason points at another candidate: {against}")
         out.append(f"\n```\n{json.dumps(rec, ensure_ascii=False)}\n```\n")
     return tries
 
@@ -155,7 +193,19 @@ def bad_key_tries(out):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--label", default="run")
+    parser.add_argument("--rescore", nargs="+", metavar="FILE",
+                        help="score criterion 3a on saved results files instead of running")
     args = parser.parse_args()
+    if args.rescore:
+        for path in args.rescore:
+            text = open(path, encoding="utf-8").read().split("## Criterion 4")[0]
+            recs = [json.loads(l) for l in re.findall(r'^(\{"ts".*)$', text, re.M)]
+            fails = [(r["run_id"], r["query"], r["selected"]["id"], other_candidate_mentions(r))
+                     for r in recs if other_candidate_mentions(r)]
+            print(f"{path}: 3a {len(recs) - len(fails)}/{len(recs)}")
+            for f in fails:
+                print(f"    FAIL {f}")
+        return
     assert not config.CACHE_ENABLED, "cache must be off"
     runlog.set_source("eval5")
 
@@ -173,6 +223,7 @@ def main():
         1: (sum(t["c1"] for t in full), len(full)),
         2: (sum(t["c2"] for t in full), len(full)),
         3: (sum(t["c3"] for t in made), len(made)),
+        "3a": (sum(t["c3a"] for t in full), len(full)),
         4: (sum(t["ok"] for t in empty), len(empty)),
         5: (sum(t["ok"] for t in bad), len(bad)),
     }
