@@ -472,6 +472,34 @@ The 503 retry error is not verified because no 503 happended during the last run
 
 select_item always take the first result and does not check whether it is still broken.
 
+<!-- ═══════════════════════ UNIT 5 — THE EXTENSION ═══════════════════════ -->
+
+---
+
+## The Shape
+
+**Shape C: Extend one capability.**
+
+I'm adding a fourth tool, `pick_best_match`, that sits between `search_listings` and `suggest_outfit` in `agent.py::run_agent`. Right now the loop always takes the first search result as `selected_item`, so the choice depends only on keyword score and ignores the user's wardrobe. That's the gap I listed under What's Still Broken. The new tool takes the top 3 results and the wardrobe, makes one model call to pick the listing that goes with the most wardrobe pieces, and returns that listing's `id` with a one-sentence reason. The loop uses that listing as `selected_item` and adds a `pick_best_match` trace line. If the model returns an `id` that isn't in the top 3, or the call fails, the tool falls back to the first result and the trace says so. The empty-search branch doesn't change: if there are no results, the agent stops before this tool runs. I'll know it works if the chosen item is always one of the real top 3 results, and if its reason names at least one actual wardrobe item.
+
+### Out of scope
+
+- **I'm not changing how `search_listings` scores or filters results.** The keyword scoring in `tools.py` and the price and size filters stay as they are. The new tool only re-orders what search already returns, so criterion 5 (price ceiling) can't break.
+- **I'm not moving the other tools to MCP.** Only `search_listings` goes through `mcp_server.py`. `pick_best_match` will be a plain function in `tools.py`, like `suggest_outfit` and `create_fit_card`.
+- **I'm not rebuilding the interface or the prompts for the other tools.** `app.py`, the `suggest_outfit` prompt and the `create_fit_card` prompt stay the same. The only new output is one extra trace line.
+
+### Size check
+
+| Piece | Estimate |
+|---|---|
+| `pick_best_match` in `tools.py` (prompt, model call, id check, fallback) | ~35 min |
+| Wire it into `run_agent` with a trace step, between `select_item` and `suggest_outfit` | ~15 min |
+| Per-tool terminal test, plus one forced-fallback test (bad id or failed call) | ~20 min |
+| Buffer for prompt tweaks | ~15 min |
+| **Total** | **~85 min** |
+
+This fits under the ninety-minute limit because it's one function, one model call and one new branch (fall back to the first result), and it reuses `generate.py` and the existing trace. If it starts to run long, I'll cut the "reason" sentence and return only the `id`.
+
 <!-- ═════════════════════════════════════════════════════════════════════
 
      SUBMISSION CHECKLIST — unit 3
