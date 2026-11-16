@@ -396,10 +396,16 @@ def pick_best_match(candidates: list[dict], wardrobe: dict) -> dict:
         f"Here are {len(top)} thrifted listings:\n\n{listing_text}\n\n"
         f"Here is what the shopper already owns:\n{wardrobe_text}\n\n"
         "Pick the ONE listing that would pair with the most pieces they "
-        "already own. Answer in exactly this format and nothing else:\n"
-        "ID: <the listing id, copied exactly>\n"
-        "REASON: <one sentence naming at least one wardrobe piece by name>"
+        "already own. Decide first, then name your choice. Answer in exactly "
+        "this format and nothing else:\n"
+        "REASON: <one sentence about the listing you chose, naming at least "
+        "one wardrobe piece it pairs with by name. Don't mention the other "
+        "listings.>\n"
+        "ID: <the id of the listing your REASON is about, copied exactly>"
     )
+    # Unit 5 fix: REASON comes before ID. With ID first the model committed to
+    # an id before reasoning, and on close calls the reason that followed
+    # argued for a different listing (criterion 3a, before-run).
 
     try:
         response = generate(
