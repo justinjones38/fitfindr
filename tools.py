@@ -337,3 +337,88 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
         prompt,
         system="You write short, natural captions for people's thrifted outfit posts.",
     ).strip().strip('"')
+
+
+# ── Tool 4: pick_best_match (unit 5 extension) ────────────────────────────────
+
+PICK_TOP_N = 3
+
+_PICK_ID_RE = re.compile(r"^\s*ID:\s*(\S+)", re.IGNORECASE | re.MULTILINE)
+_PICK_REASON_RE = re.compile(r"^\s*REASON:\s*(.+)", re.IGNORECASE | re.MULTILINE)
+
+
+def pick_best_match(candidates: list[dict], wardrobe: dict) -> dict:
+    """
+    Choose the listing from the top search results that goes best with the
+    user's wardrobe, instead of always taking the first result.
+
+    Args:
+        candidates: search_listings results, best keyword match first. Only the
+                    first PICK_TOP_N are considered.
+        wardrobe:   a wardrobe dict with an 'items' list. It may be empty.
+
+    Returns:
+        A dict:
+            item     — the chosen listing dict, always one of the top
+                       PICK_TOP_N candidates (None only if candidates is empty)
+            reason   — one sentence on why it was picked
+            fallback — None if the model made the pick, otherwise a short
+                       string saying why the first result was used instead
+
+    It never raises. When there's nothing to choose between (one candidate,
+    empty wardrobe), or the model fails or names an id that isn't in the top
+    PICK_TOP_N, it falls back to the first result and says so in `fallback`.
+
+    Test it from a terminal:
+        python -c "from tools import pick_best_match, search_listings; from utils.data_loader import get_example_wardrobe; print(pick_best_match(search_listings('vintage tee', max_price=30), get_example_wardrobe()))"
+    """
+    top = (candidates or [])[:PICK_TOP_N]
+
+    def first(why: str) -> dict:
+        item = top[0] if top else None
+        return {"item": item, "reason": "top keyword match", "fallback": why}
+
+    if not top:
+        return first("no candidates")
+    if len(top) == 1:
+        return first("only one candidate")
+
+    items = (wardrobe or {}).get("items") or []
+    if not items:
+        return first("empty wardrobe, nothing to match against")
+
+    listing_text = "\n\n".join(
+        f"ID: {c.get('id')}\n{_describe_item(c)}\n- price: ${c.get('price')}"
+        for c in top
+    )
+    wardrobe_text = "\n".join(_describe_wardrobe_item(i) for i in items)
+    prompt = (
+        f"Here are {len(top)} thrifted listings:\n\n{listing_text}\n\n"
+        f"Here is what the shopper already owns:\n{wardrobe_text}\n\n"
+        "Pick the ONE listing that would pair with the most pieces they "
+        "already own. Answer in exactly this format and nothing else:\n"
+        "ID: <the listing id, copied exactly>\n"
+        "REASON: <one sentence naming at least one wardrobe piece by name>"
+    )
+
+    try:
+        response = generate(
+            prompt,
+            system="You match thrifted listings to a shopper's existing wardrobe.",
+            temperature=0.0,
+        )
+    except Exception as exc:  # ModelUnavailable, QuotaGuard, anything else
+        return first(f"model call failed ({type(exc).__name__})")
+
+    id_match = _PICK_ID_RE.search(response or "")
+    if not id_match:
+        return first("model reply had no ID line")
+
+    picked_id = id_match.group(1).strip().strip("<>\"'`.,")
+    by_id = {c.get("id"): c for c in top}
+    if picked_id not in by_id:
+        return first(f"model picked {picked_id!r}, not in the top {len(top)}")
+
+    reason_match = _PICK_REASON_RE.search(response)
+    reason = reason_match.group(1).strip() if reason_match else "picked by the model"
+    return {"item": by_id[picked_id], "reason": reason, "fallback": None}
