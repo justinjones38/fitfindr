@@ -926,7 +926,7 @@ lst_019 pick in the before-runs was one of the three, and no other query
 produced one. The parser couldn't catch it because it reads the id and the
 reason separately and never checks one against the other.
 
-**The improvement (one change, `91f606c`):** the prompt now asks for
+**The improvement (one change, `6359189`):** the prompt now asks for
 `REASON:` first ("one sentence about the listing you chose ... Don't mention
 the other listings") and then `ID:` ("the id of the listing your REASON is
 about"). The parser didn't change. It already read the two lines in either
