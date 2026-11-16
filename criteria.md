@@ -231,6 +231,24 @@ paraphrases, it'll likely cost 2 tries, and 8 leaves room for exactly that. Belo
 8 would mean the prompt's "name at least one wardrobe piece by name" isn't
 landing.
 
+> **Tightened after the unit 5 before-run (3a):** In 10 of 10 tries, the
+> reason argues for the item that was picked. `pick_reason` contains no other
+> candidate's id and no word from another candidate's title. Words that also
+> appear in the picked item's title or style tags, in the query, or in any
+> wardrobe item name are ignored, because they don't point at a different
+> listing.
+>
+> **Why tightened:** The original check passed reasons that argued *against*
+> the pick. In run 1 the model picked `lst_019` (Platform Sneakers, White
+> Chunky Sole) with the reason "The chunky white sneakers would clash with her
+> existing chunky white sneakers, making lst_035 the better versatile choice".
+> That scored PASS because "chunky white sneakers" is a wardrobe name. The
+> criterion was supposed to show the pick used the wardrobe, and it couldn't
+> tell a reason for the pick from a reason against it. 10 of 10, because a
+> reason that contradicts the pick is a false statement shown to the user, and
+> suggest_outfit then styles the item the model just argued against. This adds
+> to the original criterion 3 without replacing it. Its target hasn't moved.
+
 ---
 
 ## 4. An empty wardrobe falls back to the first result without a model call for the pick
