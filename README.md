@@ -86,6 +86,15 @@ returns general styling advice
 - **Returns:** - 2 to 4 sentence caption
 - **When it has nothing:** - return a descriptive message 
 
+### `pick_best_match` (added in unit 5)
+
+- **What it does:** - From the top 3 search results, picks the listing that pairs with the most pieces in the user's wardrobe (one model call)
+- **Inputs:**
+  - candidates (list[dict]) — the search_listings results, best keyword match first
+  - wardrobe (dict) — with an 'items' list, may be empty
+- **Returns:** - a dict: `item` (the chosen listing dict, always one of the top 3), `reason` (one sentence naming a wardrobe piece), `fallback` (None if the model picked, otherwise why the first result was used)
+- **When it has nothing:** - it never raises. With one candidate, an empty wardrobe, a failed model call, or a reply whose ID isn't in the top 3, it returns the first result and sets `fallback`. With an empty list, `item` is None, but the loop never calls it with an empty list.
+
 ---
 
 ## Planning Loop
@@ -102,7 +111,7 @@ returns general styling advice
      function have to be real. -->
 
 **Branch rule:**
-If search_listings returns an empty list, put a message in session["error"] that says what was searched and what to loosen (raise the price limit, drop the size, or use broader keywords), then stop, without calling suggest_outfit or create_fit_card. Otherwise, take the first result as selected_item and go on to suggest_outfit, then create_fit_card.
+If search_listings returns an empty list, put a message in session["error"] that says what was searched and what to loosen (raise the price limit, drop the size, or use broader keywords), then stop, without calling suggest_outfit or create_fit_card. Otherwise, pass the results and the wardrobe to pick_best_match, use its pick as selected_item, and go on to suggest_outfit, then create_fit_card. (Before unit 5 this step just took the first result.)
 
 
 **Where it lives:** `agent.py::run_agent`
@@ -112,7 +121,7 @@ Regex, in agent.py::parse_query. One pattern finds the price ("under $30", "belo
 
 
 **What moves through the session:** <!-- which fields, in what order -->
-query → parsed (description, size, max_price) → search_results → branch: empty sets error and stops, otherwise it continues → selected_item (the first result) → outfit_suggestion → fit_card.
+query → parsed (description, size, max_price) → search_results → branch: empty sets error and stops, otherwise it continues → selected_item + pick (pick_best_match's choice from the top 3, with its reason and fallback) → outfit_suggestion → fit_card.
 
 
 
@@ -499,6 +508,45 @@ I'm adding a fourth tool, `pick_best_match`, that sits between `search_listings`
 | **Total** | **~85 min** |
 
 This fits under the ninety-minute limit because it's one function, one model call and one new branch (fall back to the first result), and it reuses `generate.py` and the existing trace. If it starts to run long, I'll cut the "reason" sentence and return only the `id`.
+
+### Build notes
+
+- **Where it lives:** `tools.py::pick_best_match`, called from the `select` step of `agent.py::run_agent`. The pick's reason and fallback go in `session["pick"]`.
+- **One change from the plan:** the `pick_best_match` trace line *replaces* the old `select_item` line instead of being added after it. Both lines would have shown the same choice, so the trace stays at 5 steps on the happy path and 2 on the empty path.
+- **Fallbacks tested offline** (with `generate` stubbed): empty list, one candidate, empty wardrobe, a good pick (3rd result chosen), an id outside the top 3, a reply with no ID line, and `ModelUnavailable`. Each one returned the expected item and `fallback` value.
+- **Regression check:** `python run_eval.py --tries 1 --label smoke` (`results/run_2026-11-15_1937_smoke.md`). The impossible query still stops at search with 0 model calls, the empty wardrobe run completes, and every fit card names the selected item's actual price and platform in 3 sentences.
+
+**The capability changing the result:** on the same query, the old loop picked `lst_033` (the first result). The new step picked `lst_006`, the second result, based on the wardrobe:
+
+```
+$ python app.py ask "vintage graphic tee under $30" --trace
+[1] parse_query
+      in:  vintage graphic tee under $30
+      out: {'description': 'vintage graphic tee', 'size': None, 'max_price': 30.0}
+[2] search_listings (via MCP)
+      in:  {'description': 'vintage graphic tee', 'size': None, 'max_price': 30.0}
+      out: 10 items: Vintage Band Tee — Faded Grey, Graphic Tee — 2003 Tour Bootleg Style, Y2K Baby Tee — Butterfly Print … +7 more
+      →    branch: results found, continuing
+[3] pick_best_match
+      in:  {'candidates': ['lst_033', 'lst_006', 'lst_002'], 'wardrobe_items': 10}
+      out: Graphic Tee — 2003 Tour Bootleg Style ($24.0, depop)
+      →    picked: The graphic tee pairs effortlessly with the baggy straight-leg jeans, black combat boots, and vintage black denim jacket for a cohesive grunge streetwear look.
+[4] suggest_outfit
+      in:  {'new_item': 'Graphic Tee — 2003 Tour Bootleg Style', 'wardrobe_items': 10}
+      out: Hey friend! Oh, I *love* a good 2003 tour bootleg tee—such an easy way to add instant edge to your wardrobe.  …
+[5] create_fit_card
+      in:  {'outfit': 'Hey friend! Oh, I *love* a good 2003 tou…', 'new_item': 'Graphic Tee — 2003 Tour Bootleg Style'}
+      out: Scored this vintage 2003 tour bootleg tee on Depop for just $24, and it has the absolute best faded wash. I th…
+```
+
+Fallback visible in the trace (empty wardrobe):
+
+```
+[3] pick_best_match
+      in:  {'candidates': ['lst_007', 'lst_016', 'lst_038'], 'wardrobe_items': 0}
+      out: Denim Jacket — Light Wash, Cropped ($42.0, poshmark)
+      →    fallback: empty wardrobe, nothing to match against, using first result
+```
 
 <!-- ═════════════════════════════════════════════════════════════════════
 
