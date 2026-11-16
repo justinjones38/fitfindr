@@ -548,6 +548,156 @@ Fallback visible in the trace (empty wardrobe):
       →    fallback: empty wardrobe, nothing to match against, using first result
 ```
 
+---
+
+## The Run Path
+
+**Local, with logs.** FitFindr is not hosted. The exact start commands, what
+the environment needs, and where the logs go are in
+[RUNNING.md](RUNNING.md#run-it-locally-with-logs-unit-5). The short version:
+
+```
+python -m venv .venv  →  activate  →  pip install -r requirements.txt
+copy .env.example .env (paste a Gemini key)  →  python test.py
+python app.py ask 'vintage graphic tee under $30' --trace
+python runlog.py                      # read back the last 10 run records
+```
+
+**Testing the instructions on myself:** I cloned the repo into a new, empty
+folder, checked out `working-branch`, and followed RUNNING.md line by line in
+Git Bash (Python 3.11.9). Before the key was pasted, `test.py` failed with
+8 passed, 1 failed, as expected. After that it was 10 passed, and the first
+`ask` completed all 5 steps and created `logs/runs.jsonl`. What a reader would
+actually have hit:
+
+1. **The code wasn't on GitHub.** I cloned from my local repo because none of
+   the unit 5 commits were pushed yet. `origin/working-branch` was still at
+   `aa3038d`, so a reader cloning the URL in RUNNING.md would get no
+   `pick_best_match`, no `runlog.py` and no `measure_cost.py`. Fix: push
+   `working-branch`. RUNNING.md also says to `git checkout working-branch`,
+   because `main` doesn't have this either.
+2. **A bad-key test passes with a bad key.** With the cache on, every answer
+   came from `.cache/`, the run printed a fit card, and nothing failed. I added
+   that to RUNNING.md's troubleshooting table, and the criteria now require
+   `AI201_CACHE=0`.
+3. **The run count was wrong.** I'd guessed "about 4 model calls a run".
+   The measurement says 3. Fixed.
+
+I only tested the Git Bash commands. The PowerShell block is the same
+sequence with PowerShell syntax, and I didn't run it from a clean clone.
+
+---
+
+## Instrumentation
+
+Every call to `agent.py::run_agent` writes one JSON line to `logs/runs.jsonl`
+through `runlog.py`, whether the run succeeded, stopped on an empty search,
+ended on a model/MCP error, or crashed. A crash is logged, then re-raised.
+Because the logging sits in `run_agent` itself, `app.py`, `run_eval.py`,
+`serve.py` and `measure_cost.py` all write records, tagged by `source`.
+
+Fields: `ts`, `run_id`, `source`, `query` (input), `wardrobe_items`, `parsed`,
+`status` (`ok` / `no_results` / `error` / `crash`), `error`, `n_results`,
+`candidates`, `selected`, `pick_fallback`, `pick_reason`, `fit_card` (output),
+`duration_s`, `model_calls`, `cache_hits`, `prompt_tokens`, `output_tokens`.
+The pick fields are there so the unit 5 criteria can be scored from the log
+alone.
+
+**14 entries, pasted from `logs/runs.jsonl`** (`python runlog.py -n 14`):
+
+- Lines 1–10 are the cost measurement (`source: "measure"`, cache off).
+- Line 11 is the bad-key test with the cache **on**. It came back `ok` with
+  `cache_hits: 3` and `model_calls: 0`: the false pass described above.
+- Line 12 is **a rejected input** (`...`), `status: "no_results"`, 0 model calls.
+- Line 13 is **an impossible query**, `status: "no_results"`, 0 model calls.
+- Line 14 is **the failed run**: a bad key with the cache off,
+  `status: "error"`. `pick_best_match` fell back
+  (`"model call failed (ModelUnavailable)"`), and the run stopped at
+  `suggest_outfit` with `fit_card: null`. Both requests were rejected, so
+  0 tokens were used.
+
+```
+{"ts": "2026-11-16T01:40:46+00:00", "run_id": "1048be48", "source": "measure", "query": "vintage graphic tee under $30", "wardrobe_items": 10, "parsed": {"description": "vintage graphic tee", "size": null, "max_price": 30.0}, "status": "ok", "error": null, "n_results": 10, "candidates": ["lst_033", "lst_006", "lst_002"], "selected": {"id": "lst_006", "title": "Graphic Tee — 2003 Tour Bootleg Style", "price": 24.0, "platform": "depop"}, "pick_fallback": null, "pick_reason": "The graphic tee pairs effortlessly with the baggy straight-leg jeans and black combat boots for a cohesive grunge and streetwear look.", "fit_card": "Scored this 2003 tour bootleg tee on Depop for just $24 and I'm obsessed. Threw it on with my baggy straight-leg jeans, black combat boots, and a vintage denim jacket for the ultimate grungy streetwear moment. Total wardrobe goldmine.", "duration_s": 9.02, "model_calls": 3, "cache_hits": 0, "prompt_tokens": 1207, "output_tokens": 280}
+{"ts": "2026-11-16T01:40:55+00:00", "run_id": "a2252401", "source": "measure", "query": "denim jacket under $60", "wardrobe_items": 10, "parsed": {"description": "denim jacket", "size": null, "max_price": 60.0}, "status": "ok", "error": null, "n_results": 7, "candidates": ["lst_007", "lst_016", "lst_038"], "selected": {"id": "lst_007", "title": "Denim Jacket — Light Wash, Cropped", "price": 42.0, "platform": "poshmark"}, "pick_fallback": null, "pick_reason": "The light wash cropped denim jacket pairs effortlessly with the white ribbed tank top and chunky white sneakers for a classic streetwear look.", "fit_card": "Scored this vintage Wrangler cropped denim jacket on Poshmark for just $42 and I am completely obsessed. I threw it on over wide-leg khaki trousers and combat boots for the ultimate effortless vintage look. It adds such a cool streetwear vibe to literally everything in my closet.", "duration_s": 4.24, "model_calls": 3, "cache_hits": 0, "prompt_tokens": 1208, "output_tokens": 283}
+{"ts": "2026-11-16T01:40:59+00:00", "run_id": "a879e0d7", "source": "measure", "query": "cargo pants under $40", "wardrobe_items": 10, "parsed": {"description": "cargo pants", "size": null, "max_price": 40.0}, "status": "ok", "error": null, "n_results": 2, "candidates": ["lst_011", "lst_005"], "selected": {"id": "lst_011", "title": "Low-Rise Cargo Pants — Khaki", "price": 27.0, "platform": "poshmark"}, "pick_fallback": null, "pick_reason": "The low-rise khaki cargo pants pair well with the white ribbed tank top and black combat boots for a complete streetwear look.", "fit_card": "Scored these low-rise khaki cargo pants on Poshmark for just $27, and I am so obsessed with the lived-in look. I paired them with a black cropped zip hoodie and chunky white sneakers to lean into that ultimate early-2000s streetwear vibe. It feels effortless, comfortable, and honestly just so fun to wear.", "duration_s": 4.02, "model_calls": 3, "cache_hits": 0, "prompt_tokens": 1159, "output_tokens": 302}
+{"ts": "2026-11-16T01:41:03+00:00", "run_id": "0c9cd836", "source": "measure", "query": "sneakers under $80", "wardrobe_items": 10, "parsed": {"description": "sneakers", "size": null, "max_price": 80.0}, "status": "ok", "error": null, "n_results": 2, "candidates": ["lst_035", "lst_019"], "selected": {"id": "lst_035", "title": "Low-Top Canvas Sneakers — Off-White", "price": 20.0, "platform": "poshmark"}, "pick_fallback": null, "pick_reason": "The off-white canvas sneakers pair well with the white ribbed tank top for a clean, minimal look.", "fit_card": "Scored these classic off-white canvas sneakers on Poshmark for just $20, and they are already my new daily go-to. I love throwing them on with baggy dark-wash denim, a simple ribbed tank, and an oversized crewneck for the ultimate comfy streetwear vibe.", "duration_s": 3.93, "model_calls": 3, "cache_hits": 0, "prompt_tokens": 1150, "output_tokens": 290}
+{"ts": "2026-11-16T01:41:07+00:00", "run_id": "be3bf5a7", "source": "measure", "query": "y2k top under $25", "wardrobe_items": 10, "parsed": {"description": "y2k top", "size": null, "max_price": 25.0}, "status": "ok", "error": null, "n_results": 10, "candidates": ["lst_017", "lst_002", "lst_035"], "selected": {"id": "lst_017", "title": "Mesh Long-Sleeve Top — Black", "price": 15.0, "platform": "depop"}, "pick_fallback": null, "pick_reason": "The black mesh long-sleeve top can be layered underneath the white ribbed tank top for a stylish textured contrast.", "fit_card": "Scored this black mesh long-sleeve top on Depop for just $15, and it is the ultimate grunge layering piece. I threw it under a white ribbed tank with my baggy jeans and combat boots for that effortless 90s edge. Honestly, the sheer sleeves just pull the whole look together.", "duration_s": 53.92, "model_calls": 4, "cache_hits": 0, "prompt_tokens": 1178, "output_tokens": 273}
+{"ts": "2026-11-16T01:42:01+00:00", "run_id": "d1f6632a", "source": "measure", "query": "vintage graphic tee under $30", "wardrobe_items": 10, "parsed": {"description": "vintage graphic tee", "size": null, "max_price": 30.0}, "status": "ok", "error": null, "n_results": 10, "candidates": ["lst_033", "lst_006", "lst_002"], "selected": {"id": "lst_006", "title": "Graphic Tee — 2003 Tour Bootleg Style", "price": 24.0, "platform": "depop"}, "pick_fallback": null, "pick_reason": "The graphic tee pairs effortlessly with the baggy straight-leg jeans, black cropped zip hoodie, and black combat boots for a cohesive streetwear and grunge look.", "fit_card": "Scored this 2003 tour bootleg tee on Depop for just $24, and it instantly brought the ultimate grunge energy to my closet. I threw it on with baggy dark wash jeans and black combat boots for some heavy streetwear edge, then draped my favorite denim jacket over the shoulders. It feels like a total 2000s icon moment without even trying.", "duration_s": 3.85, "model_calls": 3, "cache_hits": 0, "prompt_tokens": 1203, "output_tokens": 302}
+{"ts": "2026-11-16T01:42:05+00:00", "run_id": "9baad9ea", "source": "measure", "query": "denim jacket under $60", "wardrobe_items": 10, "parsed": {"description": "denim jacket", "size": null, "max_price": 60.0}, "status": "ok", "error": null, "n_results": 7, "candidates": ["lst_007", "lst_016", "lst_038"], "selected": {"id": "lst_007", "title": "Denim Jacket — Light Wash, Cropped", "price": 42.0, "platform": "poshmark"}, "pick_fallback": null, "pick_reason": "The light wash cropped denim jacket pairs effortlessly with the white ribbed tank top and baggy straight-leg jeans for a classic double-denim look.", "fit_card": "Scored this vintage Wrangler cropped denim jacket on Poshmark for just $42 and I am completely obsessed. I threw it on over a black zip hoodie with some baggy dark wash jeans and chunky sneakers for the ultimate textured streetwear vibe. It fits like an absolute dream and is about to be my everyday outer layer.", "duration_s": 3.46, "model_calls": 3, "cache_hits": 0, "prompt_tokens": 1160, "output_tokens": 247}
+{"ts": "2026-11-16T01:42:09+00:00", "run_id": "b954d01f", "source": "measure", "query": "cargo pants under $40", "wardrobe_items": 10, "parsed": {"description": "cargo pants", "size": null, "max_price": 40.0}, "status": "ok", "error": null, "n_results": 2, "candidates": ["lst_011", "lst_005"], "selected": {"id": "lst_011", "title": "Low-Rise Cargo Pants — Khaki", "price": 27.0, "platform": "poshmark"}, "pick_fallback": null, "pick_reason": "The low-rise khaki cargo pants pair well with the white ribbed tank top and black combat boots for a complete streetwear look.", "fit_card": "Scored these khaki low-rise cargos on Poshmark for $27 and they are the ultimate Y2K streetwear dream. I threw them on with my black cropped zip hoodie and chunky white sneakers for a super easy, edgy look. It totally nails that nostalgic 2000s vibe without even trying.", "duration_s": 4.38, "model_calls": 3, "cache_hits": 0, "prompt_tokens": 1141, "output_tokens": 276}
+{"ts": "2026-11-16T01:42:13+00:00", "run_id": "430067ff", "source": "measure", "query": "sneakers under $80", "wardrobe_items": 10, "parsed": {"description": "sneakers", "size": null, "max_price": 80.0}, "status": "ok", "error": null, "n_results": 2, "candidates": ["lst_035", "lst_019"], "selected": {"id": "lst_035", "title": "Low-Top Canvas Sneakers — Off-White", "price": 20.0, "platform": "poshmark"}, "pick_fallback": null, "pick_reason": "The off-white low-top canvas sneakers offer a minimal, versatile basic that will easily pair with the white ribbed tank top and baggy straight-leg jeans.", "fit_card": "Scored these off-white canvas sneakers on Poshmark for just $20, and they are already my new everyday go-to. I love how effortless they look with baggy dark wash jeans and a black cropped zip hoodie for an easy streetwear vibe. Such a solid closet basic that I know I'll wear with everything!", "duration_s": 3.51, "model_calls": 3, "cache_hits": 0, "prompt_tokens": 1115, "output_tokens": 274}
+{"ts": "2026-11-16T01:42:16+00:00", "run_id": "6352139c", "source": "measure", "query": "y2k top under $25", "wardrobe_items": 10, "parsed": {"description": "y2k top", "size": null, "max_price": 25.0}, "status": "ok", "error": null, "n_results": 10, "candidates": ["lst_017", "lst_002", "lst_035"], "selected": {"id": "lst_017", "title": "Mesh Long-Sleeve Top — Black", "price": 15.0, "platform": "depop"}, "pick_fallback": null, "pick_reason": "The black mesh long-sleeve top can be layered under the white ribbed tank top and paired with the baggy straight-leg jeans for a complete grunge-inspired look.", "fit_card": "Scored this black mesh long-sleeve top on Depop for just $15, and I am already obsessed with it. I threw it on over a white ribbed tank and baggy jeans for the ultimate 90s grunge look. It adds the best sheer texture to any outfit and I know I'm going to wear it all the time.", "duration_s": 44.95, "model_calls": 3, "cache_hits": 0, "prompt_tokens": 1189, "output_tokens": 303}
+{"ts": "2026-11-16T01:43:17+00:00", "run_id": "c61d646e", "source": "cli", "query": "vintage graphic tee under $30", "wardrobe_items": 10, "parsed": {"description": "vintage graphic tee", "size": null, "max_price": 30.0}, "status": "ok", "error": null, "n_results": 10, "candidates": ["lst_033", "lst_006", "lst_002"], "selected": {"id": "lst_006", "title": "Graphic Tee — 2003 Tour Bootleg Style", "price": 24.0, "platform": "depop"}, "pick_fallback": null, "pick_reason": "The graphic tee pairs effortlessly with the baggy straight-leg jeans, black combat boots, and vintage black denim jacket for a cohesive grunge streetwear look.", "fit_card": "Scored this vintage 2003 tour bootleg tee on Depop for just $24, and it has the absolute best faded wash. I threw it on with baggy dark-wash jeans and my chunky combat boots for that effortless 90s grunge look. It adds instant edge to pretty much anything in my closet!", "duration_s": 2.41, "model_calls": 0, "cache_hits": 3, "prompt_tokens": 0, "output_tokens": 0}
+{"ts": "2026-11-16T01:43:20+00:00", "run_id": "9609d936", "source": "cli", "query": "...", "wardrobe_items": 10, "parsed": {"description": "", "size": null, "max_price": null}, "status": "no_results", "error": "I couldn't tell what kind of item you want from '...'. Name the item, like 'denim jacket', 'graphic tee', 'jeans', or 'sneakers' — this shop carries tops, bottoms, outerwear, shoes, and accessories. You can add a size and a price too, e.g. 'graphic tee size M under $30'.", "n_results": 0, "candidates": null, "selected": null, "pick_fallback": null, "pick_reason": null, "fit_card": null, "duration_s": 2.18, "model_calls": 0, "cache_hits": 0, "prompt_tokens": 0, "output_tokens": 0}
+{"ts": "2026-11-16T01:43:23+00:00", "run_id": "d9700296", "source": "cli", "query": "designer ballgown size XXS under $5", "wardrobe_items": 10, "parsed": {"description": "designer ballgown", "size": "XXS", "max_price": 5.0}, "status": "no_results", "error": "Nothing matched 'designer ballgown' in size XXS under $5. To find something, raise your price limit, or drop the size filter, or try broader keywords (e.g. 'tee' instead of 'vintage band tee').", "n_results": 0, "candidates": null, "selected": null, "pick_fallback": null, "pick_reason": null, "fit_card": null, "duration_s": 1.93, "model_calls": 0, "cache_hits": 0, "prompt_tokens": 0, "output_tokens": 0}
+{"ts": "2026-11-16T01:43:30+00:00", "run_id": "8c234ff5", "source": "cli", "query": "vintage graphic tee under $30", "wardrobe_items": 10, "parsed": {"description": "vintage graphic tee", "size": null, "max_price": 30.0}, "status": "error", "error": "Couldn't finish: suggest_outfit failed. The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com.", "n_results": 10, "candidates": ["lst_033", "lst_006", "lst_002"], "selected": {"id": "lst_033", "title": "Vintage Band Tee — Faded Grey", "price": 19.0, "platform": "depop"}, "pick_fallback": "model call failed (ModelUnavailable)", "pick_reason": "top keyword match", "fit_card": null, "duration_s": 5.94, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 0, "output_tokens": 0}
+```
+
+I didn't trigger a `crash` record. Every failure I could cause on purpose
+(bad key, empty input, impossible query) is caught inside the loop and ends as
+`error` or `no_results`. The `crash` path in `run_agent` (log, then re-raise)
+is there for anything the loop doesn't catch, like `trace.check_iterations`
+going past `MAX_ITERATIONS`, and it's untested.
+
+---
+
+## What It Costs
+
+**One full FitFindr run costs 3 model calls and about 1,454 tokens
+(1,171 prompt + 283 output), and takes a median 4.1 seconds.** The mean is
+13.5 seconds, pulled up by rate-limit waits.
+
+**How I measured it:** `python measure_cost.py` ran the whole agent 10 times
+with the response cache off (`AI201_CACHE=0`, set inside the script before
+`config` loads, and asserted), so every call was a real request. The queries
+rotated through five that all match (`vintage graphic tee under $30`,
+`denim jacket under $60`, `cargo pants under $40`, `sneakers under $80`,
+`y2k top under $25`), twice each, with the example wardrobe, so every run took
+the full path: search → `pick_best_match` → `suggest_outfit` →
+`create_fit_card`. The numbers come from each run's log record:
+- `model_calls` and the token fields are differences in `generate.py`'s
+  counters before and after the run.
+- The tokens are what the service reported in each response's
+  `usage_metadata`, not an estimate.
+- `duration_s` is `time.perf_counter()` around `run_agent`.
+
+The script averaged the 10 records. Model: `gemini-3.5-flash-lite`, 2026-11-16.
+
+| # | run_id | query | picked | model calls | prompt tok | output tok | total tok | seconds |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `1048be48` | vintage graphic tee under $30 | lst_006 | 3 | 1207 | 280 | 1487 | 9.02 |
+| 2 | `a2252401` | denim jacket under $60 | lst_007 | 3 | 1208 | 283 | 1491 | 4.24 |
+| 3 | `a879e0d7` | cargo pants under $40 | lst_011 | 3 | 1159 | 302 | 1461 | 4.02 |
+| 4 | `0c9cd836` | sneakers under $80 | lst_035 | 3 | 1150 | 290 | 1440 | 3.93 |
+| 5 | `be3bf5a7` | y2k top under $25 | lst_017 | 4 | 1178 | 273 | 1451 | 53.92 |
+| 6 | `d1f6632a` | vintage graphic tee under $30 | lst_006 | 3 | 1203 | 302 | 1505 | 3.85 |
+| 7 | `9baad9ea` | denim jacket under $60 | lst_007 | 3 | 1160 | 247 | 1407 | 3.46 |
+| 8 | `b954d01f` | cargo pants under $40 | lst_011 | 3 | 1141 | 276 | 1417 | 4.38 |
+| 9 | `430067ff` | sneakers under $80 | lst_035 | 3 | 1115 | 274 | 1389 | 3.51 |
+| 10 | `6352139c` | y2k top under $25 | lst_017 | 3 | 1189 | 303 | 1492 | 44.95 |
+| | | **mean** | | **3.1** | **1,171** | **283** | **1,454** | **13.5** |
+| | | **median** | | **3** | **1,169** | **282** | **1,456** | **4.1** |
+
+What the numbers say:
+
+- **The real cost on this project is requests, not money.** It runs on the free
+  tier, where the limits are 15 requests a minute and a daily request cap, so
+  3 calls a run means about 5 full runs a minute before `generate.py` makes you
+  wait. Tokens barely change from query to query (1,389–1,505), because most of
+  each prompt is the fixed wardrobe text.
+- **The extension costs 1 of the 3 calls.** `pick_best_match` is a third of
+  every full run's requests. Before unit 5 a run was 2 calls. With an empty
+  wardrobe it's 2 again, because the pick skips the model.
+- **Seconds are mostly waiting.** 8 of 10 runs took 3.5–9 s. Run 5 hit a 503,
+  was retried once by `generate.py` (that's its 4th model call), and took 54 s.
+  Run 10 waited 41 s for the client-side 15-per-minute pacer with no service
+  error. The median (4.1 s) is the honest "one run" number. The mean (13.5 s)
+  is what back-to-back runs actually feel like.
+- **Failed and empty runs are close to free.** An empty search or rejected
+  input makes 0 model calls and finishes in about 2 s (mostly starting the MCP
+  server process). A bad key makes 2 rejected calls, uses 0 tokens, and takes
+  about 6 s.
+
 <!-- ═════════════════════════════════════════════════════════════════════
 
      SUBMISSION CHECKLIST — unit 3
