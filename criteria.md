@@ -148,3 +148,147 @@ Because it's a plain filter, the price should be less than the max price
      A number you missed stays where it is, gets diagnosed, and gets a fix
      attempted. That's where the points are.
      ───────────────────────────────────────────────────────────────────────── -->
+
+---
+---
+
+# Unit 5 criteria — the extension (`pick_best_match`) and its bad paths
+
+Written before any unit 5 test run. The unit 3 criteria above are left as
+they were. These five are scored in the unit 5 run.
+
+**Every try runs with the cache off (`AI201_CACHE=0`).** With the cache on, a
+repeated prompt is answered from `.cache/` without sending a request. A "bad
+key" run then finishes `ok` with 0 model calls and never tests anything (I hit
+exactly that while setting up criterion 5), and `model_calls` in criterion 4
+would read 0.
+
+**Test set used for 1–3:** the five matching queries in `measure_cost.py`
+(`vintage graphic tee under $30`, `denim jacket under $60`,
+`cargo pants under $40`, `sneakers under $80`, `y2k top under $25`), each run
+twice with the example wardrobe and the cache off, so **10 tries**. Every one of
+them returns at least 2 results, so `pick_best_match` always has a real choice.
+Each try is read from its record in `logs/runs.jsonl` (`candidates`,
+`selected`, `pick_fallback`, `pick_reason`).
+
+---
+
+## 1. The pick is always one of the real top 3 search results
+
+In 10 of 10 tries, `selected.id` is in `candidates`, and `candidates` is the
+first 3 ids of that run's `search_results` (or fewer, when search returned
+fewer than 3).
+
+**Why this target:**
+This is the one promise the extension makes that the model can't break. The
+model only returns an id as text, and `pick_best_match` looks that id up in a
+dict built from the top 3. Anything else (a hallucinated `lst_099`, an id from
+result 6, a title instead of an id) goes to the fallback. So a miss here isn't
+model randomness, it's a bug in my lookup or fallback code, and the cost of the
+bug is high: suggest_outfit and the fit card would be built on an item the
+user never searched for, or one over their price limit. Anything less than
+10 of 10 would mean accepting that.
+
+---
+
+## 2. With a full wardrobe, the model actually makes the pick
+
+In at least 9 of 10 tries, `pick_fallback` is `null`, meaning the model's reply
+was parsed and its id was accepted rather than silently falling back to the
+first result.
+
+**Why this target:**
+The fallback is quiet on purpose, and that's the risk: if the reply format
+drifts, the run still completes with a fit card and every unit 4 criterion
+still passes, but the extension has quietly turned back into "take the first
+result". The parser expects a line starting `ID:`. A reply in markdown like
+`**ID:** lst_006` doesn't match that and would fall back every time. That's
+the failure this criterion exists to catch. I allow 1 miss in 10 because the
+pick is a live call on the free tier, and a 503 that outlasts the retries
+correctly falls back. Two or more fallbacks out of 10 means a format problem,
+not bad luck. Asking for 10 of 10 would score the service's uptime instead of
+my prompt.
+
+---
+
+## 3. The reason names a real wardrobe piece
+
+In at least 8 of the tries where the model made the pick (`pick_fallback` is
+`null`), `pick_reason` contains, ignoring case, the name of at least one item
+in the example wardrobe, up to its first comma. For example
+`baggy straight-leg jeans` for "Baggy straight-leg jeans, dark wash" or
+`black combat boots`.
+
+**Why this target:**
+The reason is the only visible evidence that the pick looked at the wardrobe
+at all. A reason like "this tee has a great vintage vibe" could have been
+written without the wardrobe, and then the pick is just a second keyword
+ranking. It's lower than criterion 2 because the check is a strict substring
+match and the model paraphrases. "your baggy jeans" or "the combat boots" is a
+fair reason that fails the check. The pick runs at temperature 0.0, so the same
+query gives nearly the same reason both times. If one query's reason
+paraphrases, it'll likely cost 2 tries, and 8 leaves room for exactly that. Below
+8 would mean the prompt's "name at least one wardrobe piece by name" isn't
+landing.
+
+---
+
+## 4. An empty wardrobe falls back to the first result without a model call for the pick
+
+With `--empty-wardrobe` on 5 queries that match (the same five queries above,
+once each), in 5 of 5 tries: `selected.id` equals the first search result's id,
+`pick_fallback` is `"empty wardrobe, nothing to match against"`, the run still
+ends with `status: "ok"` and a fit card, and `model_calls` is **2**
+(suggest_outfit + create_fit_card only, with no call spent on the pick).
+
+**Why this target:**
+This is the extension's own bad input. "Pair with the most pieces they own"
+means nothing when they own nothing, and asking the model anyway would spend a
+request on a coin flip and could pick a worse keyword match for no reason.
+The check runs before any model call, so the path is deterministic and 5 of 5
+is the only honest target. `model_calls == 2` is what proves no request was
+spent on the pick, since the item check alone would also pass if the model was
+called and just happened to agree with the first result.
+
+---
+
+## 5. A failed run leaves a record, not an absence
+
+With a bad API key and the cache off
+(`AI201_CACHE=0 GEMINI_API_KEY=bad python app.py ask 'vintage graphic tee under $30' --trace`;
+the key is set for that one command, and `load_dotenv` won't override it), in
+5 of 5 tries:
+
+- the command prints a `Couldn't finish: ... failed.` message and no Python
+  traceback
+- `pick_best_match` falls back (`pick_fallback` starts with
+  `model call failed`) instead of ending the run
+- the run ends at `suggest_outfit`, the first step that actually needs the
+  model, with `fit_card` = `null`
+- exactly one new line appears in `logs/runs.jsonl` with `status: "error"`, a
+  non-empty `error` naming `suggest_outfit`, and a `duration_s`
+
+**Why this target:**
+Two things are new on this path. The extension added a model call before the
+first one that used to fail, and the logging is supposed to capture failures.
+If `pick_best_match` raised instead of falling back, the error would name the
+wrong step. If the log were written only on success, a bad key would leave no
+trace in the one file I'd check later. Everything on this path happens before
+or instead of a model reply, so nothing about it is random. 5 of 5, and any
+miss is a bug in my code, not the service.
+
+---
+
+### Self-check
+
+| # | Target is a number or plainly visible? | Checkable without judgement? | Where it's read from | About the extension? | Bad path? |
+|---|---|---|---|---|---|
+| 1 | 10 of 10 | yes, id in a list | log `selected`, `candidates` | yes | no |
+| 2 | 9 of 10 | yes, field is null or not | log `pick_fallback` | yes | partly (fallback rate) |
+| 3 | 8 of 10 | yes, case-insensitive substring | log `pick_reason` vs wardrobe names | yes | no |
+| 4 | 5 of 5 | yes, id, string, count | log `selected`, `pick_fallback`, `model_calls` | yes | yes (empty input) |
+| 5 | 5 of 5 | yes, output text and log line | terminal + log `status`, `error` | yes, plus logging | yes (bad key) |
+
+None of the five turns on "works", "good", "reliable" or "fast". Each one
+names the field it's scored from, so a reader could score a try from the
+log file alone.
