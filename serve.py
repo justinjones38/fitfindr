@@ -44,6 +44,9 @@ import config  # noqa: F401
 from flask import Flask, jsonify, request
 
 from agent import run_agent
+import runlog
+
+runlog.set_source("serve")
 from utils.data_loader import get_example_wardrobe
 
 app = Flask(__name__)
