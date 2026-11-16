@@ -698,6 +698,144 @@ What the numbers say:
   server process). A bad key makes 2 rejected calls, uses 0 tokens, and takes
   about 6 s.
 
+---
+
+## Unit 5 Run Log
+
+Each run is one `python eval_unit5.py --label runN`. It runs everything for all
+five criteria, writes it to `results/`, and scores each try against the
+definitions in `criteria.md`. Every model call is real (cache off, asserted).
+
+What has to be run to produce each number:
+- **Criteria 1–3:** 10 full runs (5 matching queries × 2) with the example
+  wardrobe.
+- **Criterion 4:** 5 runs with an **empty wardrobe**.
+- **Criterion 5:** 5 runs with a **deliberately bad API key**. Each one is a
+  real `app.py ask --trace` in its own subprocess, so the check reads the
+  actual terminal output and the one new log line.
+
+That's 20 agent runs per run and 60 across the three.
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. The pick is always one of the real top 3 search results | 10 of 10 | 10/10 | 10/10 | 10/10 | MET |
+| 2. With a full wardrobe, the model actually makes the pick (no fallback) | 9 of 10 | 10/10 | 10/10 | 10/10 | MET |
+| 3. The reason names a real wardrobe piece | 8 of 10 | 10/10 | 10/10 | 10/10 | MET |
+| 4. An empty wardrobe falls back to the first result, with no model call for the pick | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 5. A failed run (bad API key) leaves a record, not an absence | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+
+Saved output:
+- Run 1: `results/unit5_2026-11-15_1948_run1.md`
+- Run 2: `results/unit5_2026-11-15_1951_run2.md`
+- Run 3: `results/unit5_2026-11-15_1953_run3.md`
+
+**How I decided the verdicts:** a criterion is MET only if it hit its target
+in all three runs. For criterion 3 the denominator is the tries where the model
+made the pick, and that was 10 in every run, because criterion 2 never fell
+back.
+
+### Real output, one try per criterion (from run 2)
+
+**File:** `results/unit5_2026-11-15_1951_run2.md`
+**Function:** `eval_unit5.py::main`, which runs `agent.py::run_agent`. The log
+lines are written by `runlog.py::finish`, the pick is made by
+`tools.py::pick_best_match`, and the terminal output for criterion 5 comes from
+`app.py::cmd_ask`.
+
+**Criteria 1, 2 and 3** (`eval_unit5.py::full_wardrobe_tries`). The model picked
+`lst_006`, the **second** keyword result, so it didn't just default to the
+first. The id is in the real top 3 (C1), `pick_fallback` is `null` (C2), and
+the reason names three wardrobe pieces exactly (C3):
+
+#### Full wardrobe, try 1: `vintage graphic tee under $30`
+
+- C1 PASS: candidates ['lst_033', 'lst_006', 'lst_002'] vs first 3 of search_results ['lst_033', 'lst_006', 'lst_002']; selected lst_006
+- C2 PASS: pick_fallback = None
+- C3 PASS: wardrobe names found in reason: ['baggy straight-leg jeans', 'vintage black denim jacket', 'black combat boots']
+
+```
+{"ts": "2026-11-16T01:51:10+00:00", "run_id": "c8bcbced", "source": "eval5", "query": "vintage graphic tee under $30", "wardrobe_items": 10, "parsed": {"description": "vintage graphic tee", "size": null, "max_price": 30.0}, "status": "ok", "error": null, "n_results": 10, "candidates": ["lst_033", "lst_006", "lst_002"], "selected": {"id": "lst_006", "title": "Graphic Tee — 2003 Tour Bootleg Style", "price": 24.0, "platform": "depop"}, "pick_fallback": null, "pick_reason": "The graphic tee pairs effortlessly with the baggy straight-leg jeans, black combat boots, and vintage black denim jacket for a cohesive grunge and streetwear look.", "fit_card": "Scored this amazing 2003 tour bootleg tee on Depop for just $24 and I'm honestly obsessed. I threw it on with some baggy dark wash jeans and black combat boots for that ultimate effortless grunge look. It has the best worn-in feel and instantly makes any outfit look so cool.", "duration_s": 7.93, "model_calls": 3, "cache_hits": 0, "prompt_tokens": 1177, "output_tokens": 263}
+```
+
+**Criterion 4** (`eval_unit5.py::empty_wardrobe_tries`). Same query, empty
+wardrobe. It took the first result (`lst_033`) with the fallback text and
+`model_calls: 2`, so no request was spent on the pick. The 40.9 s is a wait
+for the rate limit, not work.
+
+#### Empty wardrobe, try 1: `vintage graphic tee under $30`: PASS
+
+- selected is first result: yes, fallback text: yes, status ok: yes, has fit card: yes, model_calls == 2: yes (model_calls=2, first result lst_033)
+
+```
+{"ts": "2026-11-16T01:52:36+00:00", "run_id": "8cb2ceff", "source": "eval5", "query": "vintage graphic tee under $30", "wardrobe_items": 0, "parsed": {"description": "vintage graphic tee", "size": null, "max_price": 30.0}, "status": "ok", "error": null, "n_results": 10, "candidates": ["lst_033", "lst_006", "lst_002"], "selected": {"id": "lst_033", "title": "Vintage Band Tee — Faded Grey", "price": 19.0, "platform": "depop"}, "pick_fallback": "empty wardrobe, nothing to match against", "pick_reason": "top keyword match", "fit_card": "Scored this perfectly faded charcoal vintage band tee on Depop for just $19 and I am so obsessed with how soft it is. I paired it with a pleated black mini skirt, sheer tights, and platform combat boots for that ultimate 90s grunge edge. It has that authentic lived-in look you just can not fake.", "duration_s": 40.93, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 489, "output_tokens": 231}
+```
+
+**Criterion 5** (`eval_unit5.py::bad_key_tries`). A bad key with the cache off.
+The pick fell back instead of crashing, the run stopped at `suggest_outfit`
+with a message and no traceback, and exactly one `status: "error"` line was
+written:
+
+#### Bad key, try 1: PASS
+
+- message, no traceback: yes, pick fell back: yes, ended at suggest_outfit: yes, exactly 1 new log line: yes, status error + duration: yes (exit code 0, new log lines 1)
+
+Terminal output (`app.py ask`):
+
+```
+[1] parse_query
+      in:  vintage graphic tee under $30
+      out: {'description': 'vintage graphic tee', 'size': None, 'max_price': 30.0}
+[2] search_listings (via MCP)
+      in:  {'description': 'vintage graphic tee', 'size': None, 'max_price': 30.0}
+      out: 10 items: Vintage Band Tee — Faded Grey, Graphic Tee — 2003 Tour Bootleg Style, Y2K Baby Tee — Butterfly Print … +7 more
+      →    branch: results found, continuing
+[3] pick_best_match
+      in:  {'candidates': ['lst_033', 'lst_006', 'lst_002'], 'wardrobe_items': 10}
+      out: Vintage Band Tee — Faded Grey ($19.0, depop)
+      →    fallback: model call failed (ModelUnavailable), using first result
+[4] suggest_outfit
+      in:  (failed)
+      →    error: ModelUnavailable, stopping
+
+  Couldn't finish: suggest_outfit failed. The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com.
+
+2 model calls this session
+```
+
+Log line:
+
+```
+{"ts": "2026-11-16T01:53:30+00:00", "run_id": "3a61a73e", "source": "cli", "query": "vintage graphic tee under $30", "wardrobe_items": 10, "parsed": {"description": "vintage graphic tee", "size": null, "max_price": 30.0}, "status": "error", "error": "Couldn't finish: suggest_outfit failed. The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com.", "n_results": 10, "candidates": ["lst_033", "lst_006", "lst_002"], "selected": {"id": "lst_033", "title": "Vintage Band Tee — Faded Grey", "price": 19.0, "platform": "depop"}, "pick_fallback": "model call failed (ModelUnavailable)", "pick_reason": "top keyword match", "fit_card": null, "duration_s": 2.04, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 0, "output_tokens": 0}
+```
+
+(`source` reads `cli` rather than `eval5` because `app.py` sets its own source
+tag, which is accurate: that run came through the CLI.)
+
+### What this run does and doesn't show
+
+- **All 15 cells met. That's evidence about criteria 1, 4 and 5, and weaker
+  evidence about 2 and 3.** Criteria 1, 4 and 5 are deterministic guards, so
+  3 × 5/5 or 10/10 is what correct code produces, and a miss would have been a
+  bug. Criteria 2 and 3 depend on the model, and I set them below 10 for 503s
+  and paraphrasing. Neither happened in 30 tries: the reply always started with
+  a plain `ID:` line, and every reason copied wardrobe names word for word,
+  because the prompt lists them and the pick runs at temperature 0.0. The
+  markdown `**ID:**` failure that criterion 2 was written to catch never
+  showed up, so the test hasn't shown that the criterion would catch it. The
+  offline stub test in Build notes ("no ID line") shows the fallback fires, but
+  not that it fires on a real model reply.
+- **The extension does change what the user gets.** Across the 30
+  full-wardrobe tries, the pick differed from the first keyword result 10 times
+  (5, 3 and 2 per run): `vintage graphic tee` went to `lst_006` all 6 times,
+  `sneakers` to `lst_019` 3 of 6, and `denim jacket` to `lst_016` once. It
+  never picked the 3rd candidate.
+- **Temperature 0.0 isn't deterministic here.** The sneakers and denim queries
+  got different picks between tries with identical prompts. That doesn't break
+  a criterion, but it means "same query, same item" isn't a promise the system
+  makes.
+- **Nothing crashed, so `status: "crash"` is still untested.** All 15 bad-key
+  tries were caught as `error`.
+
 <!-- ═════════════════════════════════════════════════════════════════════
 
      SUBMISSION CHECKLIST — unit 3
